@@ -14,6 +14,7 @@ Aşağıdakiler yalnızca sizin bilgisayarınızda, uygulamanın kendi veri klas
 - **Ayarlar:** tema, dil, sekme düzeni, yazı tipi, pencere ve panel konumları.
 - **Son açılanlar ve oturum:** açtığınız dosyaların yolları (içerikleri değil).
 - **Hata günlüğü:** Uygulama hata verirse teknik ayrıntılar yerel bir metin dosyasına yazılır. Otomatik olarak hiçbir yere gönderilmez.
+- **Geçici veritabanı:** Veri dosyaları açıkken içerikleri, hızlı kaydırma ve sorgu için bilgisayarınızın geçici klasöründe bir çalışma dosyasında tutulur. Uygulama kapanırken silinir; silinemezse bir sonraki açılışta temizlenir.
 
 Uygulamayı kaldırdığınızda ya da Windows Ayarlar'dan sıfırladığınızda bu veriler silinir.
 
@@ -41,6 +42,7 @@ The following are kept only on your computer, in the app's own data folder:
 - **Settings:** theme, language, tab layout, font, window and pane positions.
 - **Recent files and session:** the paths of files you opened (not their contents).
 - **Error log:** if the app hits an error, technical details are written to a local text file. Nothing is sent anywhere automatically.
+- **Temporary database:** while data files are open, their contents are kept in a working file in your temp folder for fast scrolling and queries. It is deleted when the app closes, or cleaned up on the next launch if that fails.
 
 Uninstalling the app or resetting it from Windows Settings deletes this data.
 

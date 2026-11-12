@@ -77,6 +77,7 @@ public sealed partial class MainWindow : Window
         {
             SaveSession();
             _placement.Save();
+            DataEngine.Shared.Dispose();
         };
         RootGrid.Loaded += (_, _) =>
         {
@@ -208,6 +209,12 @@ public sealed partial class MainWindow : Window
         AddAccelerator(VirtualKey.NumberPad0, Ctrl, "ZoomReset");
         AddAccelerator(VirtualKey.T, Ctrl, "New");
 
+        Add("SqlPanel", "SQL paneli", "Ctrl+E", () => _active?.Data?.ToggleSqlPanel(), VirtualKey.E, Ctrl);
+        Add("ColumnProfile", "Kolon profili", "Ctrl+Shift+I", () => _active?.Data?.ToggleProfilePanel(), VirtualKey.I, CtrlShift);
+        Add("Export", "Dışa aktar…", "Ctrl+Shift+E", () => { if (_active?.Data is { } data) _ = data.ExportAsync(); }, VirtualKey.E, CtrlShift);
+        Add("OpenAsText", "Metin olarak aç", "", () => { if (_active?.Data is not null) _ = ReopenAsync(_active, asText: true); });
+        Add("OpenAsTable", "Tablo olarak aç", "", () => { if (_active is { Editor: not null } tab && DataEngine.Supports(tab.FilePath)) _ = ReopenAsync(tab, asText: false); });
+
         Add("Palette", "Komut paleti", "Ctrl+Shift+P", TogglePalette, VirtualKey.P, CtrlShift, palette: false);
         Add("Settings", "Ayarlar", "Ctrl+,", () => _ = ShowSettingsAsync(), OemComma, Ctrl);
         Add("GitHub", "GitHub sayfası", "", () => _ = Launcher.LaunchUriAsync(new Uri(GitHubUrl)));
@@ -309,6 +316,7 @@ public sealed partial class MainWindow : Window
         SyncSelection();
         UpdateUi();
         tab.Editor?.FocusEditor();
+        tab.Data?.FocusGrid();
     }
 
     private void StepTab(int direction)
@@ -336,6 +344,7 @@ public sealed partial class MainWindow : Window
         _tabs.Remove(tab);
         _stripItems.Remove(tab);
         DocumentHost.Children.Remove(tab.View);
+        tab.Data?.Close();
 
         if (_active == tab)
         {
@@ -537,7 +546,7 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    public async Task OpenFilesAsync(IReadOnlyList<string> paths, bool reportMissing = true)
+    public async Task OpenFilesAsync(IReadOnlyList<string> paths, bool reportMissing = true, bool asText = false)
     {
         foreach (var path in paths)
         {
@@ -566,9 +575,10 @@ public sealed partial class MainWindow : Window
 
             try
             {
-                var view = await LoadViewAsync(full);
+                var view = await LoadViewAsync(full, asText);
                 var tab = new DocumentTab(Path.GetFileName(full), full, view);
                 if (view is TextDocumentView editor) HookEditor(tab, editor);
+                if (view is DataDocumentView data) HookData(tab, data);
                 AddTab(tab);
                 _settings.AddRecent(full);
             }
@@ -581,17 +591,28 @@ public sealed partial class MainWindow : Window
     }
 
     /// <summary>Dosya için görünüm kurar: metin düzenleyici ya da (henüz desteklenmeyen biçimlerde) bilgi sayfası.</summary>
-    private async Task<FrameworkElement> LoadViewAsync(string path)
+    private async Task<FrameworkElement> LoadViewAsync(string path, bool asText)
     {
         var kind = FileKinds.KindOf(path);
         string glyph = FileKinds.Glyph(kind);
         string format = FileKinds.FormatName(path);
+        bool binary = FileKinds.IsBinaryFormat(path);
 
-        if (FileKinds.IsBinaryFormat(path))
+        if (DataEngine.Supports(path) && (!asText || binary))
+        {
+            var data = new DataDocumentView(_hwnd);
+            if (await data.LoadAsync(path)) return data;
+
+            string error = data.LoadError ?? string.Empty;
+            if (binary) return new PlaceholderView(glyph, Loc.T("Dosya tablo olarak açılamadı"), error);
+            await Dialogs.MessageAsync(Root, Theme, Loc.T("Dosya tablo olarak açılamadı"),
+                error + "\n\n" + Loc.T("Dosya metin olarak açılıyor."));
+        }
+        else if (binary)
         {
             return new PlaceholderView(glyph, Loc.F("{0} dosyaları henüz açılamıyor", format),
                 kind == DocumentKind.Data
-                    ? Loc.T("Bu biçim Veri moduyla gelecek: tablo görünümü, kolon profili ve SQL.")
+                    ? Loc.T("Bu veri biçimi henüz desteklenmiyor; yol haritasında sırada.")
                     : Loc.T("Bu biçim Belge moduyla gelecek."));
         }
 
@@ -612,6 +633,23 @@ public sealed partial class MainWindow : Window
         var editor = CreateEditor();
         editor.Load(loaded);
         return editor;
+    }
+
+    private void HookData(DocumentTab tab, DataDocumentView data)
+    {
+        data.StatusChanged += (_, _) =>
+        {
+            if (tab == _active) UpdateStatus();
+        };
+        data.OpenAsTextRequested += (_, _) => _ = ReopenAsync(tab, asText: true);
+    }
+
+    /// <summary>Sekmeyi kapatıp aynı dosyayı öteki görünümde (tablo ya da ham metin) yeniden açar.</summary>
+    private async Task ReopenAsync(DocumentTab tab, bool asText)
+    {
+        if (tab.FilePath is not { } path) return;
+        if (!await CloseTabAsync(tab)) return;
+        await OpenFilesAsync(new[] { path }, asText: asText);
     }
 
     private async Task ReopenWithEncodingAsync(EncodingChoice choice)
@@ -640,7 +678,14 @@ public sealed partial class MainWindow : Window
 
     private async Task SaveActiveAsync(bool saveAs)
     {
-        if (_active is not null) await SaveAsync(_active, saveAs);
+        if (_active is null) return;
+        if (_active.Data is { } data)
+        {
+            // Veri sekmesi salt okunur: "kaydet" görünen veriyi yeni bir dosyaya aktarır.
+            await data.ExportAsync();
+            return;
+        }
+        await SaveAsync(_active, saveAs);
     }
 
     private async Task SaveAllAsync()
@@ -853,8 +898,14 @@ public sealed partial class MainWindow : Window
         bool hasTab = _active is not null;
         bool hasEditor = _active?.Editor is not null;
         bool hasPath = _active?.FilePath is not null;
+        bool hasData = _active?.Data is not null;
         MenuSave.IsEnabled = hasEditor;
-        MenuSaveAs.IsEnabled = hasEditor;
+        MenuSaveAs.IsEnabled = hasEditor || hasData;
+        MenuSqlPanel.IsEnabled = hasData;
+        MenuColumnProfile.IsEnabled = hasData;
+        MenuExport.IsEnabled = hasData;
+        MenuOpenAsText.IsEnabled = hasData;
+        MenuOpenAsTable.IsEnabled = hasEditor && hasPath && DataEngine.Supports(_active?.FilePath);
         MenuSaveAll.IsEnabled = _tabs.Any(t => t.IsDirty);
         MenuReveal.IsEnabled = hasPath;
         MenuCopyPath.IsEnabled = hasPath;
@@ -869,14 +920,16 @@ public sealed partial class MainWindow : Window
     private void UpdateStatus()
     {
         var editor = _active?.Editor;
+        var data = _active?.Data;
         var editorVisibility = editor is null ? Visibility.Collapsed : Visibility.Visible;
-        StatusCaret.Visibility = editorVisibility;
+        StatusCaret.Visibility = editor is null && data is null ? Visibility.Collapsed : Visibility.Visible;
         ZoomButton.Visibility = editorVisibility;
         EolButton.Visibility = editorVisibility;
         EncodingButton.Visibility = editorVisibility;
 
         StatusText.Text = _active is null ? Loc.T("Hazır") : _active.FilePath ?? Loc.T("Henüz kaydedilmedi");
         StatusFormat.Text = _active is null ? string.Empty : FileKinds.FormatName(_active.FilePath);
+        if (data is not null) StatusCaret.Text = data.StatusText;
         if (editor is null) return;
 
         var caret = editor.GetCaret();

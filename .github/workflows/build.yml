@@ -36,6 +36,13 @@ jobs:
           /m /nologo /v:minimal
 
 
+      - name: DuckDB yerel kitaplığı çıktıda mı
+        shell: pwsh
+        run: |
+          $dll = Get-ChildItem src/ZeroDataPeek/bin -Recurse -Filter duckdb.dll | Select-Object -First 1
+          if (-not $dll) { throw "duckdb.dll uygulama çıktısında yok (${{ matrix.platform }})" }
+          "{0} ({1:N1} MB)" -f $dll.FullName, ($dll.Length / 1MB)
+
   strings:
     # Arayüzdeki her Türkçe metnin Strings/en.json içinde karşılığı var mı
     runs-on: ubuntu-latest

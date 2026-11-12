@@ -11,7 +11,7 @@
   <Identity
     Name="AliApaydin.ZeroDataPeek"
     Publisher="CN=BA57EB18-640B-433D-88C6-EB1D10E9A905"
-    Version="0.1.0.0" />
+    Version="0.2.0.0" />
 
   <Properties>
     <DisplayName>Zero Data Peek</DisplayName>
@@ -56,6 +56,7 @@
               <uap:FileType>.csv</uap:FileType>
               <uap:FileType>.tsv</uap:FileType>
               <uap:FileType>.tab</uap:FileType>
+              <uap:FileType>.parquet</uap:FileType>
               <uap:FileType>.json</uap:FileType>
               <uap:FileType>.jsonl</uap:FileType>
               <uap:FileType>.ndjson</uap:FileType>

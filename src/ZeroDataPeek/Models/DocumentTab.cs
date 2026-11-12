@@ -27,6 +27,9 @@ public sealed partial class DocumentTab : INotifyPropertyChanged
     /// <summary>Görünüm bir metin düzenleyiciyse o; değilse null.</summary>
     public TextDocumentView? Editor => View as TextDocumentView;
 
+    /// <summary>Görünüm bir veri tablosuysa o; değilse null.</summary>
+    public DataDocumentView? Data => View as DataDocumentView;
+
     /// <summary>Diskteki tam yol; henüz kaydedilmemiş yeni sekmede null.</summary>
     public string? FilePath
     {

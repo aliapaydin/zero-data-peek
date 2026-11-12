@@ -151,6 +151,21 @@
                     <MenuFlyoutItem Text="Yakınlaştırmayı sıfırla" Tag="ZoomReset" Click="Command_Click" KeyboardAcceleratorTextOverride="Ctrl+0" />
                 </MenuBarItem>
 
+                <MenuBarItem Title="Veri">
+                    <MenuFlyoutItem x:Name="MenuSqlPanel" Text="SQL paneli" Tag="SqlPanel" Click="Command_Click" KeyboardAcceleratorTextOverride="Ctrl+E">
+                        <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE943;" /></MenuFlyoutItem.Icon>
+                    </MenuFlyoutItem>
+                    <MenuFlyoutItem x:Name="MenuColumnProfile" Text="Kolon profili" Tag="ColumnProfile" Click="Command_Click" KeyboardAcceleratorTextOverride="Ctrl+Shift+I">
+                        <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE9D9;" /></MenuFlyoutItem.Icon>
+                    </MenuFlyoutItem>
+                    <MenuFlyoutItem x:Name="MenuExport" Text="Dışa aktar…" Tag="Export" Click="Command_Click" KeyboardAcceleratorTextOverride="Ctrl+Shift+E">
+                        <MenuFlyoutItem.Icon><FontIcon Glyph="&#xEDE1;" /></MenuFlyoutItem.Icon>
+                    </MenuFlyoutItem>
+                    <MenuFlyoutSeparator />
+                    <MenuFlyoutItem x:Name="MenuOpenAsText" Text="Metin olarak aç" Tag="OpenAsText" Click="Command_Click" />
+                    <MenuFlyoutItem x:Name="MenuOpenAsTable" Text="Tablo olarak aç" Tag="OpenAsTable" Click="Command_Click" />
+                </MenuBarItem>
+
                 <MenuBarItem Title="Yardım">
                     <MenuFlyoutItem Text="Komut paleti" Tag="Palette" Click="Command_Click" KeyboardAcceleratorTextOverride="Ctrl+Shift+P">
                         <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE721;" /></MenuFlyoutItem.Icon>

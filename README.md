@@ -12,7 +12,7 @@
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/lisans-MIT-1f6fd6" alt="MIT Lisansı"></a>
   <img src="https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-1f6fd6" alt="Windows 10 | 11">
-  <img src="https://img.shields.io/badge/sürüm-0.1.0-1f6fd6" alt="Sürüm 0.1.0">
+  <img src="https://img.shields.io/badge/sürüm-0.2.0-1f6fd6" alt="Sürüm 0.2.0">
   <img src="https://img.shields.io/badge/.NET-10-512bd4" alt=".NET 10">
 </p>
 
@@ -22,18 +22,22 @@
 
 ## Durum
 
-Uygulama aşama aşama geliştiriliyor. Şu an **1. aşama (kabuk)** tamam; sıradaki aşamalar [yol haritasında](docs/ROADMAP.md).
+Uygulama aşama aşama geliştiriliyor. Şu an **1. aşama (kabuk)** ve **2. aşama (veri modu)** tamam; sıradaki aşamalar [yol haritasında](docs/ROADMAP.md).
 
 | Aşama | İçerik | Durum |
 |---|---|---|
 | 1 | Kabuk: sekmeler, tema, düz metin düzenleyici, komut paleti | Tamam |
-| 2 | Veri modu: CSV, Parquet, JSON, Excel; tablo, kolon profili, SQL (DuckDB) | Sırada |
-| 3 | Kod modu: sözdizimi renklendirme, bul/değiştir, kod katlama | Planlandı |
+| 2 | Veri modu: CSV, Parquet, JSON; tablo, kolon profili, SQL (DuckDB) | Tamam (Excel sırada) |
+| 3 | Kod modu: sözdizimi renklendirme, bul/değiştir, kod katlama | Sırada |
 | 4 | Belge modu: zengin metin, RTF/DOCX/PDF | Planlandı |
 | 5 | `.zdp` çalışma paketi: veri, sorgular ve notlar tek dosyada | Planlandı |
 
 ## Bugün neler var
 
+- **Veri modu:** CSV, TSV, Parquet, JSON ve JSON Lines dosyaları tablo olarak açılır. Satır sayısı ne olursa olsun akıcı kaydırma; başlığa tıklayıp sıralama, tüm kolonlarda arama.
+- **SQL paneli (`Ctrl+E`):** gömülü DuckDB ile dosyayı sorgula. Her açık dosya bir tablodur; iki sekmeyi tablo adlarıyla birbirine join'leyebilirsin.
+- **Kolon profili (`Ctrl+Shift+I`):** seçili kolonun dolu/boş oranı, tekil değer sayısı, en küçük/en büyük, ortalama, ortanca ve en sık değerleri.
+- **Dışa aktarma (`Ctrl+Shift+E`):** görünen veriyi (sorgu, arama ve sıralama uygulanmış haliyle) CSV, TSV, Parquet ya da JSON olarak kaydet; yani biçimler arası dönüştürme.
 - **Yatay ve dikey sekmeler:** sekmeler üstte başlık çubuğunda ya da solda boyutlandırılabilir bir listede. Sürükleyerek sıralanır, `Ctrl+Shift+L` ile düzen değişir.
 - **Düz metin düzenleyici:** kodlamayı (UTF-8, UTF-16, Windows-1254, …) ve satır sonunu (CRLF, LF, CR) algılar, kaydederken korur. İkisi de durum çubuğundan değiştirilebilir.
 - **Zarar vermez:** ikili dosyaları metin olarak açmaz; seçilen kodlama bir karakteri yazamıyorsa sessizce bozmak yerine uyarır; kaydetme önce geçici dosyaya yapılır.
@@ -53,6 +57,10 @@ Uygulama aşama aşama geliştiriliyor. Şu an **1. aşama (kabuk)** tamam; sır
 | `Ctrl+Tab` / `Ctrl+Shift+Tab` | Sonraki / önceki sekme |
 | `Ctrl+Shift+P` | Komut paleti |
 | `Ctrl+Shift+L` | Sekme düzenini değiştir (yatay / dikey) |
+| `Ctrl+E` | SQL paneli (içinde `Ctrl+Enter`: çalıştır) |
+| `Ctrl+Shift+I` | Kolon profili |
+| `Ctrl+Shift+E` | Dışa aktar |
+| `Ctrl+C` / `Ctrl+Shift+C` | Tabloda hücreyi / satırı kopyala |
 | `Alt+Z` | Sözcük kaydırma |
 | `Ctrl++` / `Ctrl+-` / `Ctrl+0` | Yakınlaştır / uzaklaştır / sıfırla |
 | `Ctrl+,` | Ayarlar |
@@ -72,13 +80,17 @@ Her gönderimde GitHub Actions x64 ve ARM64 için derler (`.github/workflows/bui
 ```
 src/ZeroDataPeek/     WinUI 3 uygulaması
   Models/             Sekme modeli
-  Services/           Ayarlar, dil, dosya türleri, metin okuma/yazma, pencere yardımcıları
-  Views/              Düzenleyici, bilgi sayfası, diyaloglar
-  Controls/           Panel ayırıcı
+  Services/           Veri motoru (DuckDB), ayarlar, dil, dosya türleri, metin okuma/yazma
+  Views/              Veri sekmesi, düzenleyici, bilgi sayfası, diyaloglar
+  Controls/           Veri tablosu, panel ayırıcı
   Strings/en.json     İngilizce metinler
 tools/                Çeviri denetimi
 docs/                 Tasarım, yol haritası, yayımlama
 ```
+
+## Teşekkür
+
+- [DuckDB](https://duckdb.org) (MIT) ve [DuckDB.NET](https://github.com/Giorgi/DuckDB.NET) (MIT): veri motoru
 
 ## Lisans
 

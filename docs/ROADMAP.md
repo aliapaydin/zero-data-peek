@@ -12,13 +12,19 @@
 - [x] Karşılama sayfası, durum çubuğu, ayarlar
 
 ## v0.2: Veri modu
-- [ ] CSV / TSV: ayraç, kodlama ve başlık satırı algılama; sanal kaydırmalı tablo
-- [ ] Parquet, JSON / JSON Lines, Excel okuma (DuckDB)
-- [ ] Kolon profili: tür, boş oranı, tekil değer sayısı, en küçük / en büyük, dağılım
-- [ ] Sıralama, filtre, kolon gizleme ve dondurma, hücre ve seçim kopyalama
-- [ ] SQL paneli: açık dosyaya ve sekmeler arasında sorgu (join)
-- [ ] Dönüştürme: CSV, Parquet, JSON ve XLSX arasında "farklı kaydet"
-- [ ] Tablo ile ham metin arasında geçiş
+- [x] Gömülü DuckDB; tüm veri sekmeleri tek veritabanını paylaşır, geçici dosyada durur
+- [x] CSV / TSV: ayraç, başlık ve tür algılama; UTF-8 olmayan dosyaları çevirerek okuma; düzensiz dosyalarda hoşgörülü okuma
+- [x] Parquet (içeri kopyalamadan), JSON / JSON Lines
+- [x] Sanal tablo: satır sayısından bağımsız kaydırma, kolon boyutlandırma, klavyeyle gezinme, hücre ve satır kopyalama
+- [x] Başlığa tıklayarak sıralama, tüm kolonlarda arama
+- [x] Kolon profili: dolu / boş, tekil, en küçük / en büyük, ortalama, ortanca, en sık değerler
+- [x] SQL paneli: açık dosyaya ve sekmeler arasında sorgu (join); tek tıkla kolon özeti (SUMMARIZE)
+- [x] Dışa aktarma: CSV, TSV, Parquet, JSON, JSON Lines
+- [x] Tablo ile ham metin arasında geçiş
+- [ ] Excel (XLSX) okuma ve yazma
+- [ ] Kolon bazlı filtreler, kolon gizleme ve dondurma, çoklu hücre seçimi
+- [ ] Uzun sorguları iptal etme, sorgu geçmişi
+- [ ] CSV açılış seçenekleri (ayraç, kodlama, başlık satırı) için diyalog
 
 ## v0.3: Kod modu
 - [ ] Sözdizimi renklendirme (Scintilla / Lexilla tabanlı düzenleyici; yedek plan Monaco)

@@ -16,6 +16,9 @@ using ZeroDataPeek.Services;
 
 namespace ZeroDataPeek.Controls;
 
+/// <summary>Tabloda sağ tıklanan yer: başlık mı hücre mi, hangi kolon ve tabloya göre konum.</summary>
+public sealed record GridContext(bool IsHeader, int Column, Point Position);
+
 /// <summary>
 /// Salt okunur veri tablosu. Satır sayısından bağımsız çalışır: yalnızca ekrana sığan satır ve kolonlar için
 /// hücre oluşturur, veriyi 200 satırlık bloklar halinde ister ve önbellekte tutar. Kaydırma satır satırdır;
@@ -137,6 +140,7 @@ public sealed partial class DataGridView : UserControl
         _surface.PointerMoved += Surface_PointerMoved;
         _surface.PointerReleased += Surface_PointerReleased;
         _surface.PointerCaptureLost += (_, _) => _resizeColumn = -1;
+        _surface.RightTapped += Surface_RightTapped;
         PointerWheelChanged += Grid_PointerWheelChanged;
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(this, Loc.T("Veri tablosu"));
     }
@@ -146,6 +150,9 @@ public sealed partial class DataGridView : UserControl
 
     /// <summary>Seçili hücre değişti.</summary>
     public event EventHandler? CurrentCellChanged;
+
+    /// <summary>Başlığa ya da hücreye sağ tıklandı (hücreyse önce seçilir).</summary>
+    public event EventHandler<GridContext>? ContextMenuRequested;
 
     /// <summary>Bir veri bloğu okunamadı (hata metni).</summary>
     public event EventHandler<string>? LoadFailed;
@@ -633,6 +640,30 @@ public sealed partial class DataGridView : UserControl
         if (row >= _rowCount) return;
         int column = position.X < gutterWidth ? _selectedColumn : ColumnAt(position.X - gutterWidth + _hOffset);
         Select(row, column < 0 ? _selectedColumn : column, ensureVisible: false);
+        e.Handled = true;
+    }
+
+    private void Surface_RightTapped(object sender, RightTappedRoutedEventArgs e)
+    {
+        if (_columns.Count == 0) return;
+        var position = e.GetPosition(_surface);
+        double gutterWidth = GutterWidth();
+        if (position.X < gutterWidth) return;
+        int column = ColumnAt(position.X - gutterWidth + _hOffset);
+        if (column < 0) return;
+
+        if (position.Y < HeaderHeight)
+        {
+            ContextMenuRequested?.Invoke(this, new GridContext(true, column, position));
+        }
+        else
+        {
+            long row = _firstRow + (long)((position.Y - HeaderHeight) / RowHeight);
+            if (row >= _rowCount) return;
+            Focus(FocusState.Pointer);
+            Select(row, column, ensureVisible: false);
+            ContextMenuRequested?.Invoke(this, new GridContext(false, column, position));
+        }
         e.Handled = true;
     }
 

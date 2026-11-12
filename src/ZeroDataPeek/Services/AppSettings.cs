@@ -38,6 +38,11 @@ public sealed class AppSettings
     /// <summary>Sekmeler solda dikey listede mi (false: üstte yatay şerit).</summary>
     public bool VerticalTabs { get => Get(false); set => Set(value); }
     public double TabPaneWidth { get => Get(240.0); set => Set(value); }
+    /// <summary>Soldaki dosya gezgini paneli.</summary>
+    public bool ShowExplorer { get => Get(true); set => Set(value); }
+    public double ExplorerWidth { get => Get(260.0); set => Set(value); }
+    /// <summary>Gezginde gösterilen kök klasör; boşsa ilk açılan dosyanın klasörü kullanılır.</summary>
+    public string ExplorerRoot { get => Get(string.Empty); set => Set(value); }
     public bool ShowStatusBar { get => Get(true); set => Set(value); }
     /// <summary>Arayüz dili: "" (Windows'a göre), "tr" ya da "en". Yeniden başlatınca uygulanır.</summary>
     public string UiLanguage { get => Get(string.Empty); set => Set(value); }
@@ -46,6 +51,8 @@ public sealed class AppSettings
     public bool WordWrap { get => Get(false); set => Set(value); }
     public string FontFamily { get => Get(DefaultFontFamily); set => Set(value); }
     public double FontSize { get => Get(DefaultFontSize); set => Set(value); }
+    /// <summary>Kod düzenleyicinin sağındaki küçük harita.</summary>
+    public bool ShowMinimap { get => Get(true); set => Set(value); }
 
     // ---- Oturum ----
     /// <summary>Açılışta, son kapanışta açık olan dosyaları geri getir.</summary>

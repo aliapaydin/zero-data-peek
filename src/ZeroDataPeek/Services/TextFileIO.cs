@@ -29,7 +29,7 @@ public sealed record LoadedText(string Text, EncodingChoice Encoding, string Eol
 public static class TextFileIO
 {
     /// <summary>Düz metin düzenleyicinin açtığı en büyük dosya.</summary>
-    public const long MaxTextBytes = 8 * 1024 * 1024;
+    public const long MaxTextBytes = 16 * 1024 * 1024;
 
     public static readonly EncodingChoice Utf8 = new("utf-8", "UTF-8", () => new UTF8Encoding(false));
     public static readonly EncodingChoice Utf8Bom = new("utf-8-bom", "UTF-8 BOM", () => new UTF8Encoding(true));

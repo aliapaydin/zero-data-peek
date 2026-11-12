@@ -10,14 +10,11 @@ using ZeroDataPeek.Services;
 
 namespace ZeroDataPeek.Views;
 
-/// <summary>İmleç konumu ve metin uzunluğu (durum çubuğu için).</summary>
-public readonly record struct CaretInfo(int Line, int Column, int Length, int Selected);
-
 /// <summary>
-/// Düz metin düzenleyici. İlk sürümün temel görünümü; sözdizimi renklendirme, bul/değiştir ve
-/// büyük dosya desteği Kod modu ile gelecek (bkz. docs/ROADMAP.md).
+/// Düz metin kutusu. Kod düzenleyici (WebView2 + Monaco) açılamadığında yedek olarak kullanılır;
+/// sözdizimi renklendirme ve bul/değiştir yoktur.
 /// </summary>
-public sealed partial class TextDocumentView : Grid
+public sealed partial class TextDocumentView : Grid, ITextEditor
 {
     private const int MinZoom = 50, MaxZoom = 400;
 
@@ -120,8 +117,23 @@ public sealed partial class TextDocumentView : Grid
         Eol = loaded.Eol;
     }
 
-    /// <summary>Düzenleyicideki metin (satır sonları kaydederken dönüştürülür).</summary>
-    public string GetText() => _box.Text;
+    public Task<string> GetTextAsync() => Task.FromResult(_box.Text);
+
+    public void SetFileName(string? fileName)
+    {
+    }
+
+    public void Find()
+    {
+    }
+
+    public void Replace()
+    {
+    }
+
+    public void GoToLine()
+    {
+    }
 
     public void ApplySettings(AppSettings settings)
     {

@@ -43,6 +43,15 @@ jobs:
           if (-not $dll) { throw "duckdb.dll uygulama çıktısında yok (${{ matrix.platform }})" }
           "{0} ({1:N1} MB)" -f $dll.FullName, ($dll.Length / 1MB)
 
+      - name: Kod düzenleyici dosyaları çıktıda mı
+        shell: pwsh
+        run: |
+          $page = Get-ChildItem src/ZeroDataPeek/bin -Recurse -Filter editor.html | Where-Object { $_.FullName -match 'Assets\\monaco' } | Select-Object -First 1
+          if (-not $page) { throw "Assets/monaco/editor.html uygulama çıktısında yok (${{ matrix.platform }})" }
+          $main = Join-Path $page.DirectoryName 'vs/editor/editor.main.js'
+          if (-not (Test-Path $main)) { throw "Monaco dosyaları eksik: $main" }
+          $page.FullName
+
   strings:
     # Arayüzdeki her Türkçe metnin Strings/en.json içinde karşılığı var mı
     runs-on: ubuntu-latest

@@ -30,6 +30,15 @@
                     </Button>
                 </Grid>
             </DataTemplate>
+
+            <!-- Gezgin panelindeki satır: girinti, ok, simge, ad; açılamayan dosyalar soluk -->
+            <DataTemplate x:Key="ExplorerItemTemplate" x:DataType="models:ExplorerItem">
+                <Grid ColumnDefinitions="14,Auto,*" ColumnSpacing="6" Height="28" Margin="{x:Bind Indent}" Opacity="{x:Bind ItemOpacity}" ToolTipService.ToolTip="{x:Bind ToolTip}">
+                    <FontIcon Glyph="{x:Bind Chevron, Mode=OneWay}" FontSize="9" VerticalAlignment="Center" />
+                    <FontIcon Grid.Column="1" Glyph="{x:Bind Glyph, Mode=OneWay}" FontSize="14" VerticalAlignment="Center" />
+                    <TextBlock Grid.Column="2" Text="{x:Bind Name}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                </Grid>
+            </DataTemplate>
         </Grid.Resources>
 
         <!-- Başlık çubuğu: yatay düzende sekme şeridi, dikey düzende pencere başlığı -->
@@ -69,6 +78,9 @@
                     </MenuFlyoutItem>
                     <MenuFlyoutItem Text="Dosya aç…" Tag="Open" Click="Command_Click" KeyboardAcceleratorTextOverride="Ctrl+O">
                         <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8E5;" /></MenuFlyoutItem.Icon>
+                    </MenuFlyoutItem>
+                    <MenuFlyoutItem Text="Klasör aç…" Tag="OpenFolder" Click="Command_Click" KeyboardAcceleratorTextOverride="Ctrl+Shift+O">
+                        <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8DA;" /></MenuFlyoutItem.Icon>
                     </MenuFlyoutItem>
                     <MenuFlyoutSubItem x:Name="MenuRecent" Text="Son açılanlar">
                         <MenuFlyoutSubItem.Icon><FontIcon Glyph="&#xE81C;" /></MenuFlyoutSubItem.Icon>
@@ -124,9 +136,16 @@
                     <MenuFlyoutItem Text="Tümünü seç" Tag="SelectAll" Click="Command_Click" KeyboardAcceleratorTextOverride="Ctrl+A">
                         <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8B3;" /></MenuFlyoutItem.Icon>
                     </MenuFlyoutItem>
+                    <MenuFlyoutSeparator />
+                    <MenuFlyoutItem Text="Bul" Tag="Find" Click="Command_Click" KeyboardAcceleratorTextOverride="Ctrl+F">
+                        <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE721;" /></MenuFlyoutItem.Icon>
+                    </MenuFlyoutItem>
+                    <MenuFlyoutItem Text="Değiştir" Tag="Replace" Click="Command_Click" KeyboardAcceleratorTextOverride="Ctrl+H" />
+                    <MenuFlyoutItem Text="Satıra git" Tag="GoToLine" Click="Command_Click" KeyboardAcceleratorTextOverride="Ctrl+G" />
                 </MenuBarItem>
 
                 <MenuBarItem Title="Görünüm">
+                    <ToggleMenuFlyoutItem x:Name="MenuExplorer" Text="Gezgin paneli" Tag="Explorer" Click="Command_Click" KeyboardAcceleratorTextOverride="Ctrl+B" />
                     <MenuFlyoutSubItem Text="Sekmeler">
                         <MenuFlyoutSubItem.Icon><FontIcon Glyph="&#xEC6C;" /></MenuFlyoutSubItem.Icon>
                         <RadioMenuFlyoutItem x:Name="MenuTabsHorizontal" Text="Üstte (yatay)" GroupName="TabLayout" Tag="TabsHorizontal" Click="Command_Click" />
@@ -140,6 +159,7 @@
                     </MenuFlyoutSubItem>
                     <MenuFlyoutSeparator />
                     <ToggleMenuFlyoutItem x:Name="MenuWordWrap" Text="Sözcük kaydırma" Tag="WordWrap" Click="Command_Click" KeyboardAcceleratorTextOverride="Alt+Z" />
+                    <ToggleMenuFlyoutItem x:Name="MenuMinimap" Text="Küçük harita" Tag="Minimap" Click="Command_Click" />
                     <ToggleMenuFlyoutItem x:Name="MenuStatusBar" Text="Durum çubuğu" Tag="StatusBar" Click="Command_Click" />
                     <MenuFlyoutSeparator />
                     <MenuFlyoutItem Text="Yakınlaştır" Tag="ZoomIn" Click="Command_Click" KeyboardAcceleratorTextOverride="Ctrl++">
@@ -185,6 +205,9 @@
                 <Button Style="{StaticResource SubtleButton}" Tag="Palette" Click="Command_Click" ToolTipService.ToolTip="Komut paleti (Ctrl+Shift+P)" AutomationProperties.Name="Komut paleti">
                     <FontIcon Glyph="&#xE721;" FontSize="14" />
                 </Button>
+                <Button Style="{StaticResource SubtleButton}" Tag="Explorer" Click="Command_Click" ToolTipService.ToolTip="Gezgin panelini aç ya da kapat (Ctrl+B)" AutomationProperties.Name="Gezgin paneli">
+                    <FontIcon Glyph="&#xE8B7;" FontSize="14" />
+                </Button>
                 <Button Style="{StaticResource SubtleButton}" Tag="ToggleTabs" Click="Command_Click" ToolTipService.ToolTip="Sekme düzenini değiştir (Ctrl+Shift+L)" AutomationProperties.Name="Sekme düzenini değiştir">
                     <FontIcon x:Name="TabLayoutIcon" Glyph="&#xE8A0;" FontSize="14" />
                 </Button>
@@ -197,13 +220,54 @@
         <!-- İçerik: dikey sekme paneli + belge alanı -->
         <Grid Grid.Row="2" Padding="8">
             <Grid.ColumnDefinitions>
+                <ColumnDefinition x:Name="ExplorerColumn" Width="0" />
+                <ColumnDefinition Width="Auto" />
                 <ColumnDefinition x:Name="TabPaneColumn" Width="0" />
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
 
+            <!-- Dosya gezgini -->
+            <Border
+                x:Name="ExplorerPane"
+                Visibility="Collapsed"
+                CornerRadius="10"
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1">
+                <Grid RowDefinitions="Auto,*">
+                    <Grid Padding="14,6,6,6" ColumnDefinitions="*,Auto,Auto,Auto" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,0,0,1">
+                        <TextBlock x:Name="ExplorerTitle" Text="Gezgin" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                        <Button x:Name="ExplorerUpButton" Grid.Column="1" Style="{StaticResource SubtleButton}" Click="ExplorerUp_Click" ToolTipService.ToolTip="Üst klasör" AutomationProperties.Name="Üst klasör">
+                            <FontIcon Glyph="&#xE74A;" FontSize="12" />
+                        </Button>
+                        <Button x:Name="ExplorerRefreshButton" Grid.Column="2" Style="{StaticResource SubtleButton}" Click="ExplorerRefresh_Click" ToolTipService.ToolTip="Yenile" AutomationProperties.Name="Yenile">
+                            <FontIcon Glyph="&#xE72C;" FontSize="12" />
+                        </Button>
+                        <Button Grid.Column="3" Style="{StaticResource SubtleButton}" Tag="OpenFolder" Click="Command_Click" ToolTipService.ToolTip="Klasör aç… (Ctrl+Shift+O)" AutomationProperties.Name="Klasör aç">
+                            <FontIcon Glyph="&#xE8DA;" FontSize="12" />
+                        </Button>
+                    </Grid>
+                    <ListView
+                        x:Name="ExplorerList"
+                        Grid.Row="1"
+                        Padding="0,4,0,4"
+                        SelectionMode="None"
+                        IsItemClickEnabled="True"
+                        ItemClick="ExplorerList_ItemClick"
+                        ItemTemplate="{StaticResource ExplorerItemTemplate}" />
+                    <StackPanel x:Name="ExplorerEmpty" Grid.Row="1" Spacing="10" Padding="16" VerticalAlignment="Center">
+                        <TextBlock Text="Bir klasör açınca içindeki dosyalar burada görünür." TextWrapping="Wrap" TextAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <Button Content="Klasör aç…" Tag="OpenFolder" Click="Command_Click" HorizontalAlignment="Center" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <controls:PaneSplitter x:Name="ExplorerSplitter" Grid.Column="1" Visibility="Collapsed" />
+
             <Border
                 x:Name="TabPane"
+                Grid.Column="2"
                 Visibility="Collapsed"
                 CornerRadius="10"
                 Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
@@ -229,10 +293,10 @@
                 </Grid>
             </Border>
 
-            <controls:PaneSplitter x:Name="TabSplitter" Grid.Column="1" Visibility="Collapsed" />
+            <controls:PaneSplitter x:Name="TabSplitter" Grid.Column="3" Visibility="Collapsed" />
 
             <Border
-                Grid.Column="2"
+                Grid.Column="4"
                 CornerRadius="10"
                 Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"

@@ -34,6 +34,7 @@ public sealed partial class MainWindow : Window
     private readonly Dictionary<DocumentTab, TabViewItem> _stripItems = new();
     private readonly Dictionary<string, AppCommand> _commands = new();
     private readonly List<AppCommand> _commandOrder = new();
+    private readonly List<EditorShortcut> _editorShortcuts = new();
     private readonly IntPtr _hwnd;
     private readonly WindowPlacement _placement;
     private readonly Microsoft.UI.Dispatching.DispatcherQueueTimer _caretTimer;
@@ -71,6 +72,7 @@ public sealed partial class MainWindow : Window
         RootGrid.KeyboardAcceleratorPlacementMode = KeyboardAcceleratorPlacementMode.Hidden;
         BuildCommands();
         BuildStatusFlyouts();
+        InitializeExplorer();
 
         AppWindow.Closing += AppWindow_Closing;
         Closed += (_, _) =>
@@ -185,6 +187,12 @@ public sealed partial class MainWindow : Window
         Add("NextTab", "Sonraki sekme", "Ctrl+Tab", () => StepTab(1), VirtualKey.Tab, Ctrl);
         Add("PreviousTab", "Önceki sekme", "Ctrl+Shift+Tab", () => StepTab(-1), VirtualKey.Tab, CtrlShift);
 
+        Add("OpenFolder", "Klasör aç…", "Ctrl+Shift+O", () => _ = PickExplorerFolderAsync(), VirtualKey.O, CtrlShift);
+        Add("Explorer", "Gezgin paneli", "Ctrl+B", ToggleExplorer, VirtualKey.B, Ctrl);
+        Add("Find", "Bul", "Ctrl+F", () => _active?.Editor?.Find());
+        Add("Replace", "Değiştir", "Ctrl+H", () => _active?.Editor?.Replace());
+        Add("GoToLine", "Satıra git", "Ctrl+G", () => _active?.Editor?.GoToLine());
+        Add("Minimap", "Küçük harita", "", ToggleMinimap);
         Add("Undo", "Geri al", "Ctrl+Z", () => _active?.Editor?.Undo());
         Add("Redo", "Yinele", "Ctrl+Y", () => _active?.Editor?.Redo());
         Add("Cut", "Kes", "Ctrl+X", () => _active?.Editor?.Cut());
@@ -241,6 +249,10 @@ public sealed partial class MainWindow : Window
             Run(id);
         };
         RootGrid.KeyboardAccelerators.Add(accelerator);
+
+        // Odak kod düzenleyicideyken (WebView2) pencere kısayolları çalışmaz; düzenleyici bunları geri bildirir.
+        _editorShortcuts.Add(new EditorShortcut(id, (int)key,
+            modifiers.HasFlag(VirtualKeyModifiers.Control), modifiers.HasFlag(VirtualKeyModifiers.Shift), modifiers.HasFlag(VirtualKeyModifiers.Menu)));
     }
 
     private void Run(string id)
@@ -272,14 +284,15 @@ public sealed partial class MainWindow : Window
         AddTab(tab);
     }
 
-    private TextDocumentView CreateEditor()
+    private CodeDocumentView CreateEditor()
     {
-        var editor = new TextDocumentView();
+        var editor = new CodeDocumentView(_editorShortcuts);
         editor.ApplySettings(_settings);
+        editor.ShortcutPressed += (_, id) => Run(id);
         return editor;
     }
 
-    private void HookEditor(DocumentTab tab, TextDocumentView editor)
+    private void HookEditor(DocumentTab tab, ITextEditor editor)
     {
         editor.Modified += (_, _) => tab.IsDirty = true;
         editor.CaretMoved += (_, _) =>
@@ -577,9 +590,10 @@ public sealed partial class MainWindow : Window
             {
                 var view = await LoadViewAsync(full, asText);
                 var tab = new DocumentTab(Path.GetFileName(full), full, view);
-                if (view is TextDocumentView editor) HookEditor(tab, editor);
+                if (view is ITextEditor editor) HookEditor(tab, editor);
                 if (view is DataDocumentView data) HookData(tab, data);
                 AddTab(tab);
+                if (_explorerRoot is null) RevealInExplorer(full);
                 _settings.AddRecent(full);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException)
@@ -620,7 +634,7 @@ public sealed partial class MainWindow : Window
         if (size > TextFileIO.MaxTextBytes)
         {
             return new PlaceholderView(glyph, Loc.T("Dosya şimdilik çok büyük"),
-                Loc.F("Düz metin düzenleyici en çok {0} MB açar. Büyük dosya desteği Veri ve Kod modlarıyla gelecek.", TextFileIO.MaxTextBytes / (1024 * 1024)));
+                Loc.F("Düzenleyici en çok {0} MB büyüklüğünde dosya açar.", TextFileIO.MaxTextBytes / (1024 * 1024)));
         }
 
         var loaded = await Task.Run(() => TextFileIO.Load(path));
@@ -631,6 +645,7 @@ public sealed partial class MainWindow : Window
         }
 
         var editor = CreateEditor();
+        editor.SetFileName(Path.GetFileName(path));
         editor.Load(loaded);
         return editor;
     }
@@ -709,7 +724,7 @@ public sealed partial class MainWindow : Window
             if (path is null) return false;
         }
 
-        string text = editor.GetText();
+        string text = await editor.GetTextAsync();
         var encoding = editor.Encoding;
         string eol = editor.Eol;
         try
@@ -730,6 +745,7 @@ public sealed partial class MainWindow : Window
 
         tab.FilePath = Path.GetFullPath(path);
         tab.IsDirty = false;
+        editor.SetFileName(tab.Title);
         _settings.AddRecent(tab.FilePath!);
         RefreshRecent();
         UpdateUi();
@@ -812,6 +828,7 @@ public sealed partial class MainWindow : Window
         StatusBar.Visibility = _settings.ShowStatusBar ? Visibility.Visible : Visibility.Collapsed;
         foreach (var tab in _tabs) tab.Editor?.ApplySettings(_settings);
         ApplyTabLayout();
+        ApplyExplorerLayout();
         SyncMenuState();
         UpdateThemeIcon();
     }
@@ -859,6 +876,13 @@ public sealed partial class MainWindow : Window
         SyncMenuState();
     }
 
+    private void ToggleMinimap()
+    {
+        _settings.ShowMinimap = !_settings.ShowMinimap;
+        foreach (var tab in _tabs) tab.Editor?.ApplySettings(_settings);
+        SyncMenuState();
+    }
+
     private void ToggleStatusBar()
     {
         _settings.ShowStatusBar = !_settings.ShowStatusBar;
@@ -875,6 +899,8 @@ public sealed partial class MainWindow : Window
         MenuThemeDark.IsChecked = _settings.Theme == AppTheme.Dark;
         MenuWordWrap.IsChecked = _settings.WordWrap;
         MenuStatusBar.IsChecked = _settings.ShowStatusBar;
+        MenuMinimap.IsChecked = _settings.ShowMinimap;
+        MenuExplorer.IsChecked = _settings.ShowExplorer;
     }
 
     private void UpdateThemeIcon() =>

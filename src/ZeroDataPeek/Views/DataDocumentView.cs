@@ -26,6 +26,12 @@ public sealed partial class DataDocumentView : Grid
     private readonly TextBox _sqlBox = new();
     private readonly TextBlock _tablesHint = new();
     private readonly Button _backButton = new();
+    private readonly Button _clearFiltersButton = new() { Visibility = Visibility.Collapsed };
+    private readonly ComboBox _sheetBox = new() { Visibility = Visibility.Collapsed, MinWidth = 120 };
+    private readonly List<DataFilter> _filters = new();
+    private Button? _textButton;
+    private string _path = string.Empty;
+    private bool _settingSheet;
     private readonly InfoBar _info = new() { IsOpen = false, IsClosable = true };
     private readonly ProgressRing _busyRing = new() { IsActive = false, Width = 18, Height = 18, Visibility = Visibility.Collapsed };
     private readonly Border _sqlPanel = new() { Visibility = Visibility.Collapsed };
@@ -89,6 +95,7 @@ public sealed partial class DataDocumentView : Grid
             }
         };
         _grid.LoadFailed += (_, message) => ShowInfo(message, InfoBarSeverity.Error);
+        _grid.ContextMenuRequested += Grid_ContextMenuRequested;
     }
 
     /// <summary>Durum çubuğu metni değişti.</summary>
@@ -120,6 +127,8 @@ public sealed partial class DataDocumentView : Grid
     /// <summary>Dosyayı tabloya alır. Başarısız olursa false döner ve <see cref="LoadError"/> dolar.</summary>
     public async Task<bool> LoadAsync(string path)
     {
+        _path = path;
+        if (_textButton is not null) _textButton.Visibility = FileKinds.IsBinaryFormat(path) ? Visibility.Collapsed : Visibility.Visible;
         SetBusy(true);
         try
         {
@@ -127,6 +136,7 @@ public sealed partial class DataDocumentView : Grid
             _base = opened.Relation;
             _nameText.Text = opened.Relation.Name;
             if (opened.Note is not null) ShowInfo(opened.Note, InfoBarSeverity.Informational);
+            ShowSheets(opened);
             ShowCurrent();
             return true;
         }
@@ -156,6 +166,61 @@ public sealed partial class DataDocumentView : Grid
 
     public void FocusGrid() => _grid.Focus(FocusState.Programmatic);
 
+    // ================================================================== Excel sayfaları
+
+    private void ShowSheets(OpenedData opened)
+    {
+        _settingSheet = true;
+        try
+        {
+            _sheetBox.Items.Clear();
+            foreach (var sheet in opened.Sheets) _sheetBox.Items.Add(sheet);
+            _sheetBox.Visibility = opened.Sheets.Count > 1 ? Visibility.Visible : Visibility.Collapsed;
+            if (opened.Sheets.Count > 0) _sheetBox.SelectedIndex = Math.Clamp(opened.Sheet, 0, opened.Sheets.Count - 1);
+        }
+        finally
+        {
+            _settingSheet = false;
+        }
+    }
+
+    /// <summary>Excel dosyasının başka bir sayfasını aynı tablo adına yükler.</summary>
+    private async Task ReloadSheetAsync(int sheet)
+    {
+        if (_base is null || _busy) return;
+        SetBusy(true);
+        try
+        {
+            var query = _query;
+            _query = null;
+            ResetView();
+            await DropViewAsync();
+            if (query is not null) await _engine.DropAsync(query);
+            var opened = await _engine.OpenFileAsync(_path, sheet, _base.Name);
+            _base = opened.Relation;
+            _info.IsOpen = false;
+            if (opened.Note is not null) ShowInfo(opened.Note, InfoBarSeverity.Informational);
+            ShowCurrent();
+        }
+        catch (Exception ex)
+        {
+            ShowInfo(ex.Message, InfoBarSeverity.Error);
+        }
+        finally
+        {
+            SetBusy(false);
+        }
+    }
+
+    /// <summary>Sıralama, arama ve süzgeçleri sıfırlar (görünüm tablosunu silmez).</summary>
+    private void ResetView()
+    {
+        _sortColumn = -1;
+        _search = null;
+        _searchBox.Text = string.Empty;
+        _filters.Clear();
+    }
+
     // ================================================================== arayüz kurulumu
 
     private Grid BuildToolbar()
@@ -166,6 +231,26 @@ public sealed partial class DataDocumentView : Grid
         bar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         bar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         bar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        bar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        bar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        _sheetBox.VerticalAlignment = VerticalAlignment.Center;
+        ToolTipService.SetToolTip(_sheetBox, Loc.T("Excel sayfası"));
+        _sheetBox.SelectionChanged += (_, _) =>
+        {
+            if (!_settingSheet && _sheetBox.SelectedIndex >= 0) _ = ReloadSheetAsync(_sheetBox.SelectedIndex);
+        };
+        SetColumn(_sheetBox, 5);
+        bar.Children.Add(_sheetBox);
+
+        _clearFiltersButton.VerticalAlignment = VerticalAlignment.Center;
+        _clearFiltersButton.Click += (_, _) =>
+        {
+            _filters.Clear();
+            _ = ApplyViewAsync();
+        };
+        SetColumn(_clearFiltersButton, 6);
+        bar.Children.Add(_clearFiltersButton);
 
         _nameText.Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"];
         _nameText.VerticalAlignment = VerticalAlignment.Center;
@@ -198,7 +283,8 @@ public sealed partial class DataDocumentView : Grid
         buttons.Children.Add(ToolButton("", Loc.T("Profil"), Loc.T("Seçili kolonun profilini göster (Ctrl+Shift+I)"), ToggleProfilePanel));
         buttons.Children.Add(ToolButton("", Loc.T("Özet"), Loc.T("Tüm kolonların özet istatistikleri"), () => _ = SummarizeAsync()));
         buttons.Children.Add(ToolButton("", Loc.T("Dışa aktar"), Loc.T("Görünen veriyi CSV, Parquet ya da JSON olarak kaydet (Ctrl+Shift+E)"), () => _ = ExportAsync()));
-        buttons.Children.Add(ToolButton("", Loc.T("Metin"), Loc.T("Dosyayı ham metin olarak aç"), () => OpenAsTextRequested?.Invoke(this, EventArgs.Empty)));
+        _textButton = ToolButton("", Loc.T("Metin"), Loc.T("Dosyayı ham metin olarak aç"), () => OpenAsTextRequested?.Invoke(this, EventArgs.Empty));
+        buttons.Children.Add(_textButton);
         SetColumn(buttons, 3);
         bar.Children.Add(buttons);
 
@@ -295,6 +381,9 @@ public sealed partial class DataDocumentView : Grid
         string summary = Loc.F("{0} satır · {1} kolon", Number(current.RowCount), Number(current.Columns.Count));
         if (_query is not null) summary += " · " + Loc.T("sorgu sonucu");
         if (!string.IsNullOrEmpty(_search)) summary += " · " + Loc.F("\"{0}\" araması", _search);
+        if (_filters.Count > 0) summary += " · " + Loc.F("{0} süzgeç", _filters.Count);
+        _clearFiltersButton.Visibility = _filters.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        _clearFiltersButton.Content = Loc.F("Süzgeçleri temizle ({0})", _filters.Count);
         _summaryText.Text = summary;
         _backButton.Visibility = _query is null ? Visibility.Collapsed : Visibility.Visible;
 
@@ -330,14 +419,14 @@ public sealed partial class DataDocumentView : Grid
         try
         {
             bool sorted = _sortColumn >= 0 && _sortColumn < source.Columns.Count;
-            if (!sorted && string.IsNullOrEmpty(_search))
+            if (!sorted && string.IsNullOrEmpty(_search) && _filters.Count == 0)
             {
                 await DropViewAsync();
             }
             else
             {
                 _viewName ??= _engine.NewInternalName("v");
-                _view = await _engine.DeriveAsync(source, _viewName, _search, sorted ? source.Columns[_sortColumn].Name : null, _sortDescending);
+                _view = await _engine.DeriveAsync(source, _viewName, _search, _filters.ToList(), sorted ? source.Columns[_sortColumn].Name : null, _sortDescending);
             }
             if (_info.Severity == InfoBarSeverity.Error) _info.IsOpen = false;
             ShowCurrent();
@@ -350,6 +439,60 @@ public sealed partial class DataDocumentView : Grid
         {
             SetBusy(false);
         }
+    }
+
+    // ================================================================== sağ tık menüsü
+
+    private void Grid_ContextMenuRequested(object? sender, GridContext context)
+    {
+        var current = Current;
+        if (current is null || context.Column < 0 || context.Column >= current.Columns.Count) return;
+        var column = current.Columns[context.Column];
+        var menu = new MenuFlyout();
+
+        void Item(string text, string glyph, Action action)
+        {
+            var item = new MenuFlyoutItem { Text = text, Icon = new FontIcon { Glyph = glyph } };
+            item.Click += (_, _) => action();
+            menu.Items.Add(item);
+        }
+
+        if (context.IsHeader)
+        {
+            Item(Loc.T("Artan sırala"), "\uE74A", () => SortBy(context.Column, descending: false));
+            Item(Loc.T("Azalan sırala"), "\uE74B", () => SortBy(context.Column, descending: true));
+            if (_sortColumn >= 0) Item(Loc.T("Sıralamayı kaldır"), "\uE711", () => SortBy(-1, descending: false));
+        }
+        else
+        {
+            string? value = _grid.CurrentValue;
+            string shown = value is null ? "null" : value.Length > 28 ? value[..28] + "…" : value;
+            Item(Loc.F("Süz: {0} = {1}", column.Name, shown), "\uE71C", () => AddFilter(new DataFilter(column.Name, value, false)));
+            Item(Loc.F("Hariç tut: {0} ≠ {1}", column.Name, shown), "\uE711", () => AddFilter(new DataFilter(column.Name, value, true)));
+            menu.Items.Add(new MenuFlyoutSeparator());
+            Item(Loc.T("Hücreyi kopyala"), "\uE8C8", () => _grid.CopySelection(wholeRow: false));
+            Item(Loc.T("Satırı kopyala"), "\uE8C8", () => _grid.CopySelection(wholeRow: true));
+        }
+        menu.Items.Add(new MenuFlyoutSeparator());
+        Item(Loc.T("Kolon profili"), "\uE9D9", () =>
+        {
+            if (_profilePanel.Visibility != Visibility.Visible) ToggleProfilePanel();
+        });
+
+        menu.ShowAt(_grid, new Microsoft.UI.Xaml.Controls.Primitives.FlyoutShowOptions { Position = context.Position });
+    }
+
+    private void SortBy(int column, bool descending)
+    {
+        _sortColumn = column;
+        _sortDescending = descending;
+        _ = ApplyViewAsync();
+    }
+
+    private void AddFilter(DataFilter filter)
+    {
+        _filters.Add(filter);
+        _ = ApplyViewAsync();
     }
 
     private async Task DropViewAsync()
@@ -387,9 +530,7 @@ public sealed partial class DataDocumentView : Grid
         {
             _queryName ??= _engine.NewInternalName("q");
             _query = await _engine.QueryAsync(sql, _queryName);
-            _sortColumn = -1;
-            _search = null;
-            _searchBox.Text = string.Empty;
+            ResetView();
             await DropViewAsync();
             _info.IsOpen = false;
             ShowCurrent();
@@ -412,9 +553,7 @@ public sealed partial class DataDocumentView : Grid
         {
             var query = _query;
             _query = null;
-            _sortColumn = -1;
-            _search = null;
-            _searchBox.Text = string.Empty;
+            ResetView();
             await DropViewAsync();
             if (query is not null) await _engine.DropAsync(query);
             _info.IsOpen = false;

@@ -2,6 +2,7 @@ using System.Data.Common;
 using System.Globalization;
 using System.Text;
 using DuckDB.NET.Data;
+using ExcelDataReader;
 
 namespace ZeroDataPeek.Services;
 
@@ -20,8 +21,14 @@ public sealed record DataColumn(string Name, string Type)
 /// <summary>Veritabanındaki bir tablo ya da görünüm: dosyanın kendisi, bir sorgu sonucu ya da sıralanmış/süzülmüş hali.</summary>
 public sealed record DataRelation(string Name, bool IsTable, IReadOnlyList<DataColumn> Columns, long RowCount);
 
-/// <summary>Bir dosyanın açılış sonucu; <see cref="Note"/> okuma sırasında yapılan uzlaşmayı (varsa) anlatır.</summary>
-public sealed record OpenedData(DataRelation Relation, string? Note);
+/// <summary>
+/// Bir dosyanın açılış sonucu; <see cref="Note"/> okuma sırasında yapılan uzlaşmayı (varsa) anlatır.
+/// Excel dosyalarında <see cref="Sheets"/> sayfa adlarını, <see cref="Sheet"/> açılan sayfanın sırasını verir.
+/// </summary>
+public sealed record OpenedData(DataRelation Relation, string? Note, IReadOnlyList<string> Sheets, int Sheet);
+
+/// <summary>Tek kolona uygulanan değer süzgeci: değere eşit olanlar ya da (Exclude) olmayanlar. Value null ise boş (NULL) değerler.</summary>
+public sealed record DataFilter(string Column, string? Value, bool Exclude);
 
 /// <summary>Tek kolon için özet istatistikler.</summary>
 public sealed record ColumnProfile(
@@ -76,8 +83,10 @@ public sealed class DataEngine : IDisposable
     public static bool Supports(string? path)
     {
         string ext = SafeExtension(path);
-        return ext is ".csv" or ".tsv" or ".tab" or ".parquet" or ".json" or ".jsonl" or ".ndjson";
+        return ext is ".csv" or ".tsv" or ".tab" or ".parquet" or ".json" or ".jsonl" or ".ndjson" || IsExcel(path);
     }
+
+    public static bool IsExcel(string? path) => SafeExtension(path) is ".xlsx" or ".xlsm" or ".xlsb" or ".xls";
 
     /// <summary>Açık dosyaların SQL'de kullanılabilen tablo adları.</summary>
     public IReadOnlyList<string> TableNames
@@ -94,16 +103,25 @@ public sealed class DataEngine : IDisposable
 
     // ------------------------------------------------------------------ dosya açma
 
-    public Task<OpenedData> OpenFileAsync(string path) => RunAsync(connection =>
+    /// <summary>
+    /// Dosyayı veritabanına alır. <paramref name="existingName"/> verilirse (Excel'de sayfa değiştirirken) aynı tablo adı yeniden kullanılır.
+    /// </summary>
+    public Task<OpenedData> OpenFileAsync(string path, int sheet = 0, string? existingName = null) => RunAsync(connection =>
     {
-        string name = ReserveName(path);
+        string name = existingName ?? ReserveName(path);
         try
         {
             string ext = SafeExtension(path);
             string? note = null;
             bool isTable = true;
+            IReadOnlyList<string> sheets = Array.Empty<string>();
 
-            if (ext == ".parquet")
+            if (IsExcel(path))
+            {
+                string csv = ExcelSheetToCsv(path, ref sheet, out sheets);
+                note = ImportCsv(connection, name, csv, sniff: false);
+            }
+            else if (ext == ".parquet")
             {
                 // Parquet kolon bazlı ve dizinli: içeri kopyalamadan doğrudan okunur, dev dosyalar anında açılır.
                 Execute(connection, $"CREATE OR REPLACE VIEW {Quote(name)} AS SELECT * FROM read_parquet({Literal(path)})");
@@ -115,29 +133,93 @@ public sealed class DataEngine : IDisposable
             }
             else
             {
-                note = ImportCsv(connection, name, path);
+                note = ImportCsv(connection, name, path, sniff: true);
             }
 
-            return new OpenedData(Describe(connection, name, isTable), note);
+            return new OpenedData(Describe(connection, name, isTable), note, sheets, sheet);
         }
         catch
         {
-            ReleaseName(name);
+            if (existingName is null) ReleaseName(name);
             throw;
         }
     });
 
     /// <summary>
+    /// Excel sayfasını geçici bir UTF-8 CSV'ye yazar (DuckDB'nin Excel eklentisi internetten indirildiği için kullanılmaz).
+    /// İlk dolu satır başlık olur; tarih ve sayılar kültürden bağımsız yazılır.
+    /// </summary>
+    private string ExcelSheetToCsv(string path, ref int sheet, out IReadOnlyList<string> sheets)
+    {
+        var names = new List<string>();
+        string target = Path.Combine(TempFolder, "xl-" + Guid.NewGuid().ToString("N") + ".csv");
+        lock (_tempFiles) _tempFiles.Add(target);
+
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        using var reader = ExcelReaderFactory.CreateReader(stream);
+        if (sheet < 0 || sheet >= reader.ResultsCount) sheet = 0;
+
+        int index = 0;
+        bool written = false;
+        do
+        {
+            names.Add(reader.Name ?? ("Sayfa" + (index + 1).ToString(CultureInfo.InvariantCulture)));
+            if (index == sheet)
+            {
+                using var writer = new StreamWriter(target, false, new UTF8Encoding(false));
+                var line = new StringBuilder();
+                while (reader.Read())
+                {
+                    line.Clear();
+                    bool any = false;
+                    for (int i = 0; i < reader.FieldCount; i++)
+                    {
+                        if (i > 0) line.Append(',');
+                        string value = CsvValue(reader.GetValue(i));
+                        if (value.Length > 0) any = true;
+                        line.Append(value);
+                    }
+                    if (!any) continue; // tümüyle boş satır
+                    writer.Write(line);
+                    writer.Write('\n');
+                    written = true;
+                }
+            }
+            index++;
+        }
+        while (reader.NextResult());
+
+        sheets = names;
+        if (!written) throw new DataEngineException(Loc.T("Bu sayfada veri yok."));
+        return target;
+    }
+
+    private static string CsvValue(object? value) => value switch
+    {
+        null or DBNull => string.Empty,
+        DateTime date => date.TimeOfDay == TimeSpan.Zero
+            ? date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
+            : date.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture),
+        TimeSpan time => time.ToString("c", CultureInfo.InvariantCulture),
+        bool flag => flag ? "true" : "false",
+        double number => number.ToString("R", CultureInfo.InvariantCulture),
+        float number => number.ToString("R", CultureInfo.InvariantCulture),
+        decimal number => number.ToString(CultureInfo.InvariantCulture),
+        sbyte or byte or short or ushort or int or uint or long or ulong => Convert.ToString(value, CultureInfo.InvariantCulture) ?? string.Empty,
+        _ => "\"" + (Convert.ToString(value, CultureInfo.InvariantCulture) ?? string.Empty).Replace("\"", "\"\"") + "\"",
+    };
+
+    /// <summary>
     /// CSV'yi tabloya alır. Önce türleri algılayarak dener; olmazsa hatalı satırları atlayıp tüm kolonları metin olarak alır.
     /// UTF-8 olmayan dosyalar (ör. Windows-1254) önce geçici bir UTF-8 kopyaya çevrilir.
     /// </summary>
-    private string? ImportCsv(DbConnection connection, string name, string path)
+    private string? ImportCsv(DbConnection connection, string name, string path, bool sniff)
     {
         string source = path;
         string? note = null;
         string encodingOption = string.Empty;
 
-        var encoding = SniffEncoding(path);
+        var encoding = sniff ? SniffEncoding(path) : SniffedEncoding.Utf8;
         if (encoding == SniffedEncoding.Utf16)
         {
             encodingOption = ", encoding='utf-16'";
@@ -147,6 +229,9 @@ public sealed class DataEngine : IDisposable
             source = TranscodeToUtf8(path, out string encodingName);
             note = Loc.F("Dosya {0} kodlamasından UTF-8'e çevrilerek okundu.", encodingName);
         }
+
+        // Ayraç noktalı virgülse (Türkçe ve Avrupa Excel dışa aktarımları) ondalık ayırıcı virgüldür.
+        if (sniff && SniffDelimiter(connection, source, encodingOption) == ";") encodingOption += ", decimal_separator=','";
 
         string create = $"CREATE OR REPLACE TABLE {Quote(name)} AS SELECT * FROM read_csv({Literal(source)}";
         try
@@ -162,7 +247,7 @@ public sealed class DataEngine : IDisposable
             }
             catch (Exception)
             {
-                if (source != path || encoding == SniffedEncoding.Utf16) throw first;
+                if (!sniff || source != path || encoding == SniffedEncoding.Utf16) throw first;
                 // Örnekte görünmeyen geçersiz baytlar olabilir: ANSI sayıp çevirerek son bir kez dene.
                 source = TranscodeToUtf8(path, out string encodingName);
                 Execute(connection, $"CREATE OR REPLACE TABLE {Quote(name)} AS SELECT * FROM read_csv({Literal(source)}, all_varchar=true, ignore_errors=true, null_padding=true)");
@@ -171,6 +256,20 @@ public sealed class DataEngine : IDisposable
             }
             string lenient = Loc.T("Dosya düzensiz olduğu için tüm kolonlar metin olarak alındı; okunamayan satırlar atlanmış olabilir.");
             return note is null ? lenient : note + " " + lenient;
+        }
+    }
+
+    private static string? SniffDelimiter(DbConnection connection, string path, string options)
+    {
+        try
+        {
+            using var command = connection.CreateCommand();
+            command.CommandText = $"SELECT Delimiter FROM sniff_csv({Literal(path)}{options})";
+            return Convert.ToString(command.ExecuteScalar(), CultureInfo.InvariantCulture);
+        }
+        catch (Exception)
+        {
+            return null; // algılanamadı: varsayılanlarla okunur
         }
     }
 
@@ -259,14 +358,27 @@ public sealed class DataEngine : IDisposable
     });
 
     /// <summary>Kaynağı arama metni ve sıralamayla yeni bir tabloya alır (sayfalama hızlı kalsın diye sonuç saklanır).</summary>
-    public Task<DataRelation> DeriveAsync(DataRelation source, string target, string? search, string? sortColumn, bool descending) => RunAsync(connection =>
+    public Task<DataRelation> DeriveAsync(DataRelation source, string target, string? search, IReadOnlyList<DataFilter> filters,
+        string? sortColumn, bool descending) => RunAsync(connection =>
     {
         var sql = new StringBuilder($"CREATE OR REPLACE TABLE {Quote(target)} AS SELECT * FROM {Quote(source.Name)}");
+        var conditions = new List<string>();
         if (!string.IsNullOrWhiteSpace(search) && source.Columns.Count > 0)
         {
             string pattern = "%" + search.Trim().Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_") + "%";
+            conditions.Add(string.Join(" OR ", source.Columns.Select(c => $"CAST({Quote(c.Name)} AS VARCHAR) ILIKE {Literal(pattern)} ESCAPE '\\'")));
+        }
+        foreach (var filter in filters)
+        {
+            string column = Quote(filter.Column);
+            if (filter.Value is null) conditions.Add(filter.Exclude ? $"{column} IS NOT NULL" : $"{column} IS NULL");
+            else if (filter.Exclude) conditions.Add($"{column} IS NULL OR CAST({column} AS VARCHAR) <> {Literal(filter.Value)}");
+            else conditions.Add($"CAST({column} AS VARCHAR) = {Literal(filter.Value)}");
+        }
+        if (conditions.Count > 0)
+        {
             sql.Append(" WHERE ");
-            sql.Append(string.Join(" OR ", source.Columns.Select(c => $"CAST({Quote(c.Name)} AS VARCHAR) ILIKE {Literal(pattern)} ESCAPE '\\'")));
+            sql.Append(string.Join(" AND ", conditions.Select(c => "(" + c + ")")));
         }
         if (sortColumn is not null)
         {

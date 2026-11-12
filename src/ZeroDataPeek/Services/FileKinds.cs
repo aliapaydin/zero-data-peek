@@ -72,6 +72,40 @@ public static class FileKinds
 
     public static bool IsBinaryFormat(string? path) => BinaryFormats.Contains(Extension(path));
 
+    /// <summary>Uzantısız ya da noktayla başlayan, metin olduğu bilinen dosya adları.</summary>
+    private static readonly HashSet<string> TextFileNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "readme", "license", "licence", "notice", "authors", "changelog", "makefile", "dockerfile", "gemfile", "procfile",
+        ".gitignore", ".gitattributes", ".editorconfig", ".env", ".npmrc", ".dockerignore", ".prettierrc", ".eslintrc",
+    };
+
+    private static readonly HashSet<string> PlainTextExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".txt", ".log", ".text", ".nfo", ".srt", ".vtt", ".lst", ".out", ".err", ".properties", ".reg", ".url", ".plist",
+        ".sln", ".map", ".lock", ".rst", ".adoc", ".org", ".bib",
+    };
+
+    /// <summary>
+    /// Uygulamanın bu dosyayı açıp açamayacağı (gezgin panelinde açılamayanlar soluk gösterilir).
+    /// Veri motorunun desteklediği biçimler ya da metin olduğu uzantısından bilinen dosyalar açılabilir.
+    /// </summary>
+    public static bool CanOpen(string? path)
+    {
+        if (string.IsNullOrEmpty(path)) return false;
+        if (DataEngine.Supports(path)) return true;
+        string ext = Extension(path);
+        if (BinaryFormats.Contains(ext)) return false;
+        if (Languages.ContainsKey(ext) || DataFormats.ContainsKey(ext) || DocumentFormats.ContainsKey(ext) || PlainTextExtensions.Contains(ext)) return true;
+        try
+        {
+            return TextFileNames.Contains(Path.GetFileName(path));
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
+    }
+
     /// <summary>Segoe Fluent Icons simgesi.</summary>
     public static string Glyph(DocumentKind kind) => kind switch
     {

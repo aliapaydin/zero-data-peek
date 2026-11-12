@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' data: blob: 'unsafe-inline' 'unsafe-eval'; connect-src 'self'">
+<title>Zero Data Peek</title>
+<style>
+  html, body, #editor { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; }
+  body { background: transparent; }
+</style>
+</head>
+<body>
+<div id="editor"></div>
+<script src="vs/loader.js"></script>
+<script>
+// Zero Data Peek kod düzenleyicisi: Monaco + uygulama köprüsü.
+// Uygulama → sayfa: chrome.webview 'message' olayı ya da zdp.* işlevleri (ExecuteScript).
+// Sayfa → uygulama: chrome.webview.postMessage({type: ...}).
+(function () {
+  var host = window.chrome && window.chrome.webview;
+  function post(message) { if (host) host.postMessage(message); }
+
+  var editor = null;
+  var loading = false;
+  var shortcuts = [];
+  var cursorTimer = 0;
+
+  // Mutlak adres: çalışan (worker) betikleri göreli yolu çözemez.
+  require.config({ paths: { vs: new URL('vs', window.location.href).href } });
+  require(['vs/editor/editor.main'], function () {
+    monaco.editor.defineTheme('zdp-light', {
+      base: 'vs', inherit: true, rules: [],
+      colors: { 'editor.background': '#FBFBFC', 'editorGutter.background': '#FBFBFC' }
+    });
+    monaco.editor.defineTheme('zdp-dark', {
+      base: 'vs-dark', inherit: true, rules: [],
+      colors: { 'editor.background': '#1B1E25', 'editorGutter.background': '#1B1E25' }
+    });
+
+    editor = monaco.editor.create(document.getElementById('editor'), {
+      value: '',
+      language: 'plaintext',
+      theme: 'zdp-light',
+      automaticLayout: true,
+      fontFamily: 'Cascadia Mono, Consolas, monospace',
+      fontSize: 14,
+      wordWrap: 'off',
+      minimap: { enabled: true },
+      mouseWheelZoom: false,
+      scrollBeyondLastLine: false,
+      renderWhitespace: 'selection',
+      smoothScrolling: true,
+      contextmenu: true,
+      links: false,
+      unicodeHighlight: { ambiguousCharacters: false, invisibleCharacters: false },
+      padding: { top: 8 }
+    });
+
+    editor.onDidChangeModelContent(function () {
+      if (!loading) post({ type: 'changed' });
+      queueCursor();
+    });
+    editor.onDidChangeCursorSelection(queueCursor);
+
+    // Ctrl + tekerlek: yakınlaştırmayı uygulama yönetir.
+    document.addEventListener('wheel', function (e) {
+      if (!e.ctrlKey) return;
+      e.preventDefault();
+      e.stopPropagation();
+      post({ type: 'zoom', delta: e.deltaY < 0 ? 10 : -10 });
+    }, { capture: true, passive: false });
+
+    // Uygulama kısayolları (Ctrl+S, Ctrl+W, …): odak sayfadayken pencereye ulaşmaz, biz iletiriz.
+    document.addEventListener('keydown', function (e) {
+      for (var i = 0; i < shortcuts.length; i++) {
+        var s = shortcuts[i];
+        if (s.key === e.keyCode && s.ctrl === e.ctrlKey && s.shift === e.shiftKey && s.alt === e.altKey) {
+          e.preventDefault();
+          e.stopPropagation();
+          post({ type: 'shortcut', id: s.id });
+          return;
+        }
+      }
+    }, true);
+
+    post({ type: 'ready' });
+  }, function (error) {
+    post({ type: 'failed', message: String(error && error.message ? error.message : error) });
+  });
+
+  function queueCursor() {
+    if (cursorTimer) return;
+    cursorTimer = setTimeout(function () {
+      cursorTimer = 0;
+      if (!editor) return;
+      var model = editor.getModel();
+      var selection = editor.getSelection();
+      var position = editor.getPosition();
+      post({
+        type: 'cursor',
+        line: position ? position.lineNumber : 1,
+        column: position ? position.column : 1,
+        selected: selection && !selection.isEmpty() ? model.getValueLengthInRange(selection) : 0,
+        length: model.getValueLength()
+      });
+    }, 50);
+  }
+
+  // Dosya adından dil: Monaco'nun kayıtlı dillerinin uzantı ve dosya adı listelerine bakılır.
+  function languageFor(fileName) {
+    if (!fileName) return 'plaintext';
+    var lower = fileName.toLowerCase();
+    var dot = lower.lastIndexOf('.');
+    var extension = dot >= 0 ? lower.substring(dot) : '';
+    var languages = monaco.languages.getLanguages();
+    for (var i = 0; i < languages.length; i++) {
+      var names = languages[i].filenames || [];
+      for (var n = 0; n < names.length; n++) if (names[n].toLowerCase() === lower) return languages[i].id;
+    }
+    if (extension) {
+      for (var j = 0; j < languages.length; j++) {
+        var extensions = languages[j].extensions || [];
+        for (var k = 0; k < extensions.length; k++) if (extensions[k].toLowerCase() === extension) return languages[j].id;
+      }
+    }
+    var extra = { '.jsonl': 'json', '.ndjson': 'json', '.csproj': 'xml', '.props': 'xml', '.targets': 'xml', '.xaml': 'xml', '.svg': 'xml',
+                  '.toml': 'ini', '.cfg': 'ini', '.conf': 'ini', '.env': 'ini', '.ipynb': 'json', '.psm1': 'powershell', '.cmd': 'bat' };
+    return extra[extension] || 'plaintext';
+  }
+
+  var zdp = window.zdp = {
+    load: function (text, fileName) {
+      loading = true;
+      try {
+        var model = editor.getModel();
+        monaco.editor.setModelLanguage(model, languageFor(fileName));
+        model.setValue(text);
+        editor.setPosition({ lineNumber: 1, column: 1 });
+        editor.setScrollTop(0);
+      } finally {
+        loading = false;
+      }
+      queueCursor();
+      return editor.getModel().getLanguageId();
+    },
+    setFileName: function (fileName) {
+      monaco.editor.setModelLanguage(editor.getModel(), languageFor(fileName));
+      return editor.getModel().getLanguageId();
+    },
+    text: function () { return editor.getModel().getValue(monaco.editor.EndOfLinePreference.LF); },
+    selectedText: function () { return editor.getModel().getValueInRange(editor.getSelection()); },
+    insert: function (text) {
+      editor.executeEdits('zdp', [{ range: editor.getSelection(), text: text, forceMoveMarkers: true }]);
+      editor.pushUndoStop();
+    },
+    options: function (o) {
+      if (o.theme) monaco.editor.setTheme(o.theme === 'dark' ? 'zdp-dark' : 'zdp-light');
+      var update = {};
+      if (o.fontFamily) update.fontFamily = o.fontFamily + ', Cascadia Mono, Consolas, monospace';
+      if (o.fontSize) update.fontSize = o.fontSize;
+      if (typeof o.wordWrap === 'boolean') update.wordWrap = o.wordWrap ? 'on' : 'off';
+      if (typeof o.minimap === 'boolean') update.minimap = { enabled: o.minimap };
+      editor.updateOptions(update);
+    },
+    shortcuts: function (list) { shortcuts = list || []; },
+    command: function (id) {
+      editor.focus();
+      switch (id) {
+        case 'undo': editor.trigger('zdp', 'undo', null); break;
+        case 'redo': editor.trigger('zdp', 'redo', null); break;
+        case 'selectAll': editor.setSelection(editor.getModel().getFullModelRange()); break;
+        case 'find': editor.getAction('actions.find').run(); break;
+        case 'replace': editor.getAction('editor.action.startFindReplaceAction').run(); break;
+        case 'gotoLine': editor.getAction('editor.action.gotoLine').run(); break;
+        case 'deleteSelection': editor.executeEdits('zdp', [{ range: editor.getSelection(), text: '' }]); editor.pushUndoStop(); break;
+        case 'focus': break;
+      }
+    }
+  };
+
+  if (host) {
+    host.addEventListener('message', function (e) {
+      var m = e.data;
+      if (!m || !editor) return;
+      if (m.type === 'load') post({ type: 'language', id: zdp.load(m.text, m.fileName) });
+      else if (m.type === 'options') zdp.options(m);
+      else if (m.type === 'shortcuts') zdp.shortcuts(m.list);
+      else if (m.type === 'insert') zdp.insert(m.text);
+    });
+  }
+})();
+</script>
+</body>
+</html>

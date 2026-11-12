@@ -25,7 +25,7 @@ public sealed partial class DocumentTab : INotifyPropertyChanged
     public FrameworkElement View { get; }
 
     /// <summary>Görünüm bir metin düzenleyiciyse o; değilse null.</summary>
-    public TextDocumentView? Editor => View as TextDocumentView;
+    public ITextEditor? Editor => View as ITextEditor;
 
     /// <summary>Görünüm bir veri tablosuysa o; değilse null.</summary>
     public DataDocumentView? Data => View as DataDocumentView;

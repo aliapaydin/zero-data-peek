@@ -1,0 +1,44 @@
+name: build
+
+on:
+  push:
+    branches: [main, "feature/**"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [x64, ARM64]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - uses: microsoft/setup-msbuild@v2
+
+      - name: Restore
+        run: msbuild ZeroDataPeek.sln /t:Restore /p:Configuration=Release /p:Platform=${{ matrix.platform }}
+
+      - name: Build
+        run: >
+          msbuild ZeroDataPeek.sln
+          /p:Configuration=Release
+          /p:Platform=${{ matrix.platform }}
+          /p:AppxPackageSigningEnabled=false
+          /p:GenerateAppxPackageOnBuild=false
+          /m /nologo /v:minimal
+
+
+  strings:
+    # Arayüzdeki her Türkçe metnin Strings/en.json içinde karşılığı var mı
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 tools/check-strings.py

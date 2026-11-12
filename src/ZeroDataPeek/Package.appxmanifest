@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Identity değerleri Partner Center → Product identity ile birebir aynı olmalı (Store başka değeri reddeder).
+-->
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="uap rescap">
+
+  <Identity
+    Name="AliApaydin.ZeroDataPeek"
+    Publisher="CN=BA57EB18-640B-433D-88C6-EB1D10E9A905"
+    Version="0.1.0.0" />
+
+  <Properties>
+    <DisplayName>Zero Data Peek</DisplayName>
+    <PublisherDisplayName>Ali Apaydin</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+  </Properties>
+
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Universal" MinVersion="10.0.19041.0" MaxVersionTested="10.0.26100.0" />
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.19041.0" MaxVersionTested="10.0.26100.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="x-generate"/>
+  </Resources>
+
+  <Applications>
+    <Application Id="App"
+      Executable="$targetnametoken$.exe"
+      EntryPoint="$targetentrypoint$">
+      <uap:VisualElements
+        DisplayName="Zero Data Peek"
+        Description="Veri, kod ve belge dosyalarını tek pencerede açan sekmeli görüntüleyici ve düzenleyici."
+        BackgroundColor="transparent"
+        Square150x150Logo="Assets\Square150x150Logo.png"
+        Square44x44Logo="Assets\Square44x44Logo.png">
+        <uap:DefaultTile Wide310x150Logo="Assets\Wide310x150Logo.png" />
+        <uap:SplashScreen Image="Assets\SplashScreen.png" />
+      </uap:VisualElements>
+
+      <Extensions>
+        <!-- "Birlikte aç" listesinde görünen türler (varsayılan uygulamayı değiştirmez) -->
+        <uap:Extension Category="windows.fileTypeAssociation">
+          <uap:FileTypeAssociation Name="textfile">
+            <uap:DisplayName>Zero Data Peek</uap:DisplayName>
+            <uap:Logo>Assets\Square44x44Logo.png</uap:Logo>
+            <uap:SupportedFileTypes>
+              <uap:FileType>.txt</uap:FileType>
+              <uap:FileType>.log</uap:FileType>
+              <uap:FileType>.md</uap:FileType>
+              <uap:FileType>.markdown</uap:FileType>
+              <uap:FileType>.csv</uap:FileType>
+              <uap:FileType>.tsv</uap:FileType>
+              <uap:FileType>.tab</uap:FileType>
+              <uap:FileType>.json</uap:FileType>
+              <uap:FileType>.jsonl</uap:FileType>
+              <uap:FileType>.ndjson</uap:FileType>
+              <uap:FileType>.xml</uap:FileType>
+              <uap:FileType>.yaml</uap:FileType>
+              <uap:FileType>.yml</uap:FileType>
+              <uap:FileType>.toml</uap:FileType>
+              <uap:FileType>.ini</uap:FileType>
+              <uap:FileType>.cfg</uap:FileType>
+              <uap:FileType>.conf</uap:FileType>
+              <uap:FileType>.env</uap:FileType>
+              <uap:FileType>.sql</uap:FileType>
+              <uap:FileType>.py</uap:FileType>
+              <uap:FileType>.ipynb</uap:FileType>
+              <uap:FileType>.r</uap:FileType>
+              <uap:FileType>.js</uap:FileType>
+              <uap:FileType>.ts</uap:FileType>
+              <uap:FileType>.jsx</uap:FileType>
+              <uap:FileType>.tsx</uap:FileType>
+              <uap:FileType>.html</uap:FileType>
+              <uap:FileType>.htm</uap:FileType>
+              <uap:FileType>.css</uap:FileType>
+              <uap:FileType>.scss</uap:FileType>
+              <uap:FileType>.cs</uap:FileType>
+              <uap:FileType>.java</uap:FileType>
+              <uap:FileType>.kt</uap:FileType>
+              <uap:FileType>.c</uap:FileType>
+              <uap:FileType>.h</uap:FileType>
+              <uap:FileType>.cpp</uap:FileType>
+              <uap:FileType>.hpp</uap:FileType>
+              <uap:FileType>.go</uap:FileType>
+              <uap:FileType>.rs</uap:FileType>
+              <uap:FileType>.php</uap:FileType>
+              <uap:FileType>.rb</uap:FileType>
+              <uap:FileType>.swift</uap:FileType>
+              <uap:FileType>.lua</uap:FileType>
+              <uap:FileType>.ps1</uap:FileType>
+              <uap:FileType>.bat</uap:FileType>
+              <uap:FileType>.cmd</uap:FileType>
+              <uap:FileType>.sh</uap:FileType>
+              <uap:FileType>.dax</uap:FileType>
+              <uap:FileType>.m</uap:FileType>
+              <uap:FileType>.pq</uap:FileType>
+              <uap:FileType>.tex</uap:FileType>
+              <uap:FileType>.srt</uap:FileType>
+            </uap:SupportedFileTypes>
+          </uap:FileTypeAssociation>
+        </uap:Extension>
+      </Extensions>
+    </Application>
+  </Applications>
+
+  <Capabilities>
+    <rescap:Capability Name="runFullTrust" />
+  </Capabilities>
+</Package>

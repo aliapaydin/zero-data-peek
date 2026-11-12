@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 64 64">
+  <title>Zero Data Peek</title>
+  <rect width="64" height="64" rx="16" fill="#1f6fd6"/>
+  <rect x="15" y="10" width="34" height="44" rx="17" fill="none" stroke="#ffffff" stroke-width="8"/>
+  <rect x="25" y="24" width="14" height="6" rx="3" fill="#f2b84b"/>
+  <rect x="25" y="34" width="9" height="6" rx="3" fill="#f2b84b"/>
+</svg>

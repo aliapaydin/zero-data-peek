@@ -4,7 +4,6 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
 using System.Text;
-using Microsoft.UI.Dispatching;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -37,7 +36,7 @@ public sealed partial class MainWindow : Window
     private readonly List<AppCommand> _commandOrder = new();
     private readonly IntPtr _hwnd;
     private readonly WindowPlacement _placement;
-    private readonly DispatcherQueueTimer _caretTimer;
+    private readonly Microsoft.UI.Dispatching.DispatcherQueueTimer _caretTimer;
     private DocumentTab? _active;
     private bool _syncingTabs;
     private bool _stripSyncQueued;

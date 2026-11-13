@@ -27,6 +27,7 @@ public sealed partial class MainWindow
             {
                 Path = tab.FilePath,
                 Mode = tab.Data is not null ? "data" : tab.Doc is not null ? "document" : "text",
+                Sql = tab.Data is { SqlText: { Length: > 0 } sql } && !string.IsNullOrWhiteSpace(sql) ? sql : null,
             });
         }
         return session;
@@ -76,9 +77,8 @@ public sealed partial class MainWindow
 
         int skipped = _tabs.Count(t => t.FilePath is null);
         SetSession(path);
-        StatusText.Text = skipped == 0
-            ? Loc.F("Oturum kaydedildi: {0}", path)
-            : Loc.F("Oturum kaydedildi: {0} ({1} kaydedilmemiş sekme dahil edilmedi)", path, skipped);
+        if (skipped == 0) Notify(Loc.F("Oturum kaydedildi: {0}", path));
+        else Notify(Loc.F("Oturum kaydedildi: {0} ({1} kaydedilmemiş sekme dahil edilmedi)", path, skipped), NoticeKind.Warning);
     }
 
     private async Task PickSessionAsync()
@@ -138,11 +138,17 @@ public sealed partial class MainWindow
                 continue;
             }
             await OpenFilesAsync(new[] { tab.Path }, reportMissing: false, asText: tab.Mode == "text" && DataEngine.Supports(tab.Path));
+            if (!string.IsNullOrWhiteSpace(tab.Sql) &&
+                _tabs.FirstOrDefault(t => string.Equals(t.FilePath, tab.Path, StringComparison.OrdinalIgnoreCase))?.Data is { } data)
+            {
+                data.SqlText = tab.Sql; // sorgu panele yazılır; çalıştırmak kullanıcıya kalır
+            }
         }
 
         var active = _tabs.FirstOrDefault(t => string.Equals(t.FilePath, session.Active, StringComparison.OrdinalIgnoreCase));
         if (active is not null) Activate(active);
         SetSession(path);
+        if (missing.Count == 0) Notify(Loc.F("Oturum açıldı: {0}", session.Name), NoticeKind.Info);
 
         if (missing.Count > 0)
         {

@@ -44,6 +44,8 @@ public sealed class AppSettings
     /// <summary>Gezginde gösterilen kök klasör; boşsa ilk açılan dosyanın klasörü kullanılır.</summary>
     public string ExplorerRoot { get => Get(string.Empty); set => Set(value); }
     public bool ShowStatusBar { get => Get(true); set => Set(value); }
+    /// <summary>Kompakt mod: alçak satırlar, küçük yazılar, dar boşluklar (bkz. Density).</summary>
+    public bool CompactMode { get => Get(false); set => Set(value); }
     /// <summary>Arayüz dili: "" (Windows'a göre), "tr" ya da "en". Yeniden başlatınca uygulanır.</summary>
     public string UiLanguage { get => Get(string.Empty); set => Set(value); }
 
@@ -57,6 +59,8 @@ public sealed class AppSettings
     // ---- Oturum ----
     /// <summary>Açılışta, son kapanışta açık olan dosyaları geri getir.</summary>
     public bool RestoreSession { get => Get(true); set => Set(value); }
+    /// <summary>Kaydedilmemiş metin sekmelerini kapanışta sormadan sakla, açılışta geri getir.</summary>
+    public bool KeepUnsaved { get => Get(true); set => Set(value); }
     public IReadOnlyList<string> SessionFiles
     {
         get => Split(Get(string.Empty));

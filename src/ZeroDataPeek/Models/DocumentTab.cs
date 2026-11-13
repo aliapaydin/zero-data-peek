@@ -70,5 +70,26 @@ public sealed partial class DocumentTab : INotifyPropertyChanged
 
     public string CloseTip => Loc.T("Sekmeyi kapat");
 
+    /// <summary>Dikey sekme listesindeki satır yüksekliği ve yazı boyutu (kompakt moda göre).</summary>
+    public double RowHeight => Density.TabRow;
+    public double FontSize => Density.ListFont;
+    public double IconSize => Density.ListIcon;
+
+    /// <summary>Dosyanın en son okunduğu ya da yazıldığı andaki değişiklik zamanı (diskte değişti mi denetimi için).</summary>
+    public DateTime? DiskStamp { get; set; }
+
+    /// <summary>Dosyanın şu anki değişiklik zamanını kaydeder (açtıktan ve kaydettikten sonra).</summary>
+    public void TouchDiskStamp()
+    {
+        try
+        {
+            DiskStamp = _filePath is not null && File.Exists(_filePath) ? File.GetLastWriteTimeUtc(_filePath) : null;
+        }
+        catch (Exception)
+        {
+            DiskStamp = null;
+        }
+    }
+
     private void RaiseAll() => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(string.Empty));
 }

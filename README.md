@@ -12,7 +12,7 @@
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/lisans-MIT-1f6fd6" alt="MIT Lisansı"></a>
   <img src="https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-1f6fd6" alt="Windows 10 | 11">
-  <img src="https://img.shields.io/badge/sürüm-0.4.0-1f6fd6" alt="Sürüm 0.4.0">
+  <img src="https://img.shields.io/badge/sürüm-0.5.0-1f6fd6" alt="Sürüm 0.5.0">
   <img src="https://img.shields.io/badge/.NET-10-512bd4" alt=".NET 10">
 </p>
 
@@ -107,6 +107,8 @@ docs/                 Tasarım, yol haritası, yayımlama
 - [Monaco Editor](https://github.com/microsoft/monaco-editor) (MIT): kod düzenleyici
 - [ExcelDataReader](https://github.com/ExcelDataReader/ExcelDataReader) (MIT): Excel okuma
 - [JSZip](https://github.com/Stuk/jszip) (MIT): DOCX paketleme
+- [SQL Formatter](https://github.com/sql-formatter-org/sql-formatter) (MIT): SQL biçimlendirme
+- [Marked](https://github.com/markedjs/marked) (MIT): Markdown önizleme
 
 ## Lisans
 

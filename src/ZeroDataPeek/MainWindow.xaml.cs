@@ -73,6 +73,7 @@ public sealed partial class MainWindow : Window
         BuildCommands();
         BuildStatusFlyouts();
         InitializeExplorer();
+        InitializeBackup();
         ShellMenu.Publish(_settings);
         RefreshSessions();
 
@@ -80,6 +81,8 @@ public sealed partial class MainWindow : Window
         Closed += (_, _) =>
         {
             SaveSession();
+            // Saklanacak kaydedilmemiş metin sekmesi kalmadıysa eski yedekler de gitsin.
+            if (!_settings.KeepUnsaved || !_tabs.Any(t => t.IsDirty && t.Editor is not null)) TabBackup.Clear();
             _placement.Save();
             DataEngine.Shared.Dispose();
         };
@@ -105,6 +108,7 @@ public sealed partial class MainWindow : Window
     {
         try
         {
+            await RestoreBackupsAsync(); // önce yedekler: oturumdaki aynı dosya ikinci kez açılmaz
             if (_settings.RestoreSession)
             {
                 var session = _settings.SessionFiles.Where(File.Exists).ToList();
@@ -152,6 +156,12 @@ public sealed partial class MainWindow : Window
     private async Task RequestCloseAsync()
     {
         var dirty = _tabs.Where(t => t.IsDirty).ToList();
+        if (dirty.Count > 0 && _settings.KeepUnsaved)
+        {
+            // Metin sekmeleri sorulmadan saklanır, bir sonraki açılışta geri gelir. Belge sekmeleri için yine sorulur.
+            while (_backupBusy) await Task.Delay(40);
+            if (await WriteBackupsAsync()) dirty = dirty.Where(t => t.Editor is null).ToList();
+        }
         if (dirty.Count > 0)
         {
             var choice = await Dialogs.SaveChangesAsync(Root, Theme, dirty.Select(t => t.Title).ToList());
@@ -181,6 +191,7 @@ public sealed partial class MainWindow : Window
         Add("Save", "Kaydet", "Ctrl+S", () => _ = SaveActiveAsync(false), VirtualKey.S, Ctrl);
         Add("SaveAs", "Farklı kaydet…", "Ctrl+Shift+S", () => _ = SaveActiveAsync(true), VirtualKey.S, CtrlShift);
         Add("SaveAll", "Tümünü kaydet", "", () => _ = SaveAllAsync());
+        Add("Duplicate", "Sekmeyi çoğalt", "", () => { if (_active is not null) _ = DuplicateTabAsync(_active); });
         Add("Reveal", "Dosya Gezgini'nde göster", "", RevealActive);
         Add("CopyPath", "Dosya yolunu kopyala", "", CopyActivePath);
         Add("CloseTab", "Sekmeyi kapat", "Ctrl+W", () => { if (_active is not null) _ = CloseTabAsync(_active); }, VirtualKey.W, Ctrl);
@@ -194,7 +205,10 @@ public sealed partial class MainWindow : Window
         Add("Find", "Bul", "Ctrl+F", () => _active?.Editor?.Find());
         Add("Replace", "Değiştir", "Ctrl+H", () => _active?.Editor?.Replace());
         Add("GoToLine", "Satıra git", "Ctrl+G", () => _active?.Editor?.GoToLine());
+        Add("Format", "Belgeyi biçimlendir", "Shift+Alt+F", () => _ = FormatActiveAsync(), VirtualKey.F, VirtualKeyModifiers.Shift | VirtualKeyModifiers.Menu);
+        Add("MarkdownPreview", "Markdown önizleme", "Ctrl+Shift+V", () => _active?.Editor?.TogglePreview(), VirtualKey.V, CtrlShift);
         Add("Minimap", "Küçük harita", "", ToggleMinimap);
+        Add("CompactMode", "Kompakt mod", "Ctrl+Alt+K", ToggleCompact, VirtualKey.K, Ctrl | VirtualKeyModifiers.Menu);
         Add("NewDocument", "Yeni belge", "Ctrl+Shift+N", NewDocument, VirtualKey.N, CtrlShift);
         Add("Print", "Yazdır…", "Ctrl+P", () => _active?.Doc?.Print(), VirtualKey.P, Ctrl);
         Add("SessionSave", "Oturumu kaydet", "Ctrl+Alt+S", () => _ = SaveSessionFileAsync(false), VirtualKey.S, Ctrl | VirtualKeyModifiers.Menu);
@@ -340,6 +354,7 @@ public sealed partial class MainWindow : Window
         }
         SyncSelection();
         UpdateUi();
+        MarkActiveInExplorer();
         tab.Editor?.FocusEditor();
         tab.Data?.FocusGrid();
         tab.Doc?.FocusEditor();
@@ -383,6 +398,7 @@ public sealed partial class MainWindow : Window
         }
         SyncTabViews();
         UpdateUi();
+        MarkActiveInExplorer();
         return true;
     }
 
@@ -429,6 +445,7 @@ public sealed partial class MainWindow : Window
             IconSource = new FontIconSource { Glyph = tab.Glyph },
         };
         ToolTipService.SetToolTip(item, tab.ToolTip);
+        item.ContextFlyout = CreateTabMenu(tab);
         _stripItems[tab] = item;
         return item;
     }
@@ -612,9 +629,10 @@ public sealed partial class MainWindow : Window
                 if (view is ITextEditor editor) HookEditor(tab, editor);
                 if (view is DataDocumentView data) HookData(tab, data);
                 if (view is RichDocumentView document) HookDocument(tab, document);
+                tab.TouchDiskStamp();
                 AddTab(tab);
                 if (view is RichDocumentView loading) _ = LoadDocumentAsync(tab, loading, full);
-                if (_explorerRoot is null) RevealInExplorer(full);
+                if (_explorerRoot is null && _settings.ShowExplorer) RevealInExplorer(full, force: false);
                 _settings.AddRecent(full);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException)
@@ -638,6 +656,7 @@ public sealed partial class MainWindow : Window
         if (DataEngine.Supports(path) && (!asText || binary))
         {
             var data = new DataDocumentView(_hwnd);
+            data.ApplySettings(_settings);
             if (await data.LoadAsync(path)) return data;
 
             string error = data.LoadError ?? string.Empty;
@@ -680,6 +699,7 @@ public sealed partial class MainWindow : Window
             if (tab == _active) UpdateStatus();
         };
         data.OpenAsTextRequested += (_, _) => _ = ReopenAsync(tab, asText: true);
+        data.Notified += (_, message) => Notify(message);
     }
 
     /// <summary>Sekmeyi kapatıp aynı dosyayı öteki görünümde (tablo ya da ham metin) yeniden açar.</summary>
@@ -704,7 +724,9 @@ public sealed partial class MainWindow : Window
             if (loaded is null) return;
             editor.Load(loaded);
             tab.IsDirty = false;
+            tab.TouchDiskStamp();
             UpdateUi();
+            Notify(Loc.F("{0} olarak yeniden açıldı", Loc.T(choice.Name)), NoticeKind.Info);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -733,10 +755,22 @@ public sealed partial class MainWindow : Window
 
     private async Task SaveAllAsync()
     {
+        int saved = 0;
         foreach (var tab in _tabs.Where(t => t.IsDirty).ToList())
         {
             if (!await SaveAsync(tab)) return;
+            saved++;
         }
+        if (saved > 1) Notify(Loc.F("{0} sekme kaydedildi", saved));
+    }
+
+    private async Task FormatActiveAsync()
+    {
+        if (_active?.Editor is not { } editor) return;
+        string result = await editor.FormatAsync();
+        if (result == "ok") Notify(Loc.T("Biçimlendirildi"));
+        else if (result == "unsupported") Notify(Loc.T("Bu dil için biçimlendirici yok"), NoticeKind.Warning);
+        else Notify(Loc.F("Biçimlendirilemedi: {0}", result.StartsWith("error:", StringComparison.Ordinal) ? result[6..].Trim() : result), NoticeKind.Warning);
     }
 
     /// <summary>Sekmeyi kaydeder; yolu yoksa ya da <paramref name="saveAs"/> ise yer sorar. Kaydedilemezse false döner.</summary>
@@ -774,10 +808,13 @@ public sealed partial class MainWindow : Window
 
         tab.FilePath = Path.GetFullPath(path);
         tab.IsDirty = false;
+        tab.TouchDiskStamp();
         editor.SetFileName(tab.Title);
         _settings.AddRecent(tab.FilePath!);
         RefreshRecent();
         UpdateUi();
+        MarkActiveInExplorer();
+        Notify(Loc.F("Kaydedildi: {0}", tab.Title));
         return true;
     }
 
@@ -820,16 +857,12 @@ public sealed partial class MainWindow : Window
 
     private void RevealActive()
     {
-        if (_active?.FilePath is not { } path || !File.Exists(path)) return;
-        Process.Start(new ProcessStartInfo("explorer.exe", "/select,\"" + path + "\"") { UseShellExecute = true });
+        if (_active?.FilePath is { } path) RevealPath(path);
     }
 
     private void CopyActivePath()
     {
-        if (_active?.FilePath is not { } path) return;
-        var package = new DataPackage();
-        package.SetText(path);
-        Clipboard.SetContent(package);
+        if (_active?.FilePath is { } path) CopyText(path, Loc.T("Yol kopyalandı"));
     }
 
     private void OpenErrorLog()
@@ -855,10 +888,12 @@ public sealed partial class MainWindow : Window
     {
         RootGrid.RequestedTheme = ThemeHelper.ToElementTheme(_settings.Theme);
         StatusBar.Visibility = _settings.ShowStatusBar ? Visibility.Visible : Visibility.Collapsed;
+        ApplyDensity(); // görünümler yoğunluğu buradan okur: önce bu
         foreach (var tab in _tabs)
         {
             tab.Editor?.ApplySettings(_settings);
             tab.Doc?.ApplySettings(_settings);
+            tab.Data?.ApplySettings(_settings);
         }
         ApplyTabLayout();
         ApplyExplorerLayout();
@@ -934,6 +969,7 @@ public sealed partial class MainWindow : Window
         MenuStatusBar.IsChecked = _settings.ShowStatusBar;
         MenuMinimap.IsChecked = _settings.ShowMinimap;
         MenuExplorer.IsChecked = _settings.ShowExplorer;
+        MenuCompact.IsChecked = _settings.CompactMode;
     }
 
     private void UpdateThemeIcon() =>
@@ -979,6 +1015,9 @@ public sealed partial class MainWindow : Window
         MenuCloseOthers.IsEnabled = _tabs.Count > 1;
         MenuCloseAll.IsEnabled = hasTab;
         MenuEdit.IsEnabled = hasEditor || hasDocument;
+        MenuDuplicate.IsEnabled = hasEditor;
+        MenuFormat.IsEnabled = hasEditor;
+        MenuPreview.IsEnabled = hasEditor;
 
         UpdateStatus();
     }
@@ -1026,6 +1065,7 @@ public sealed partial class MainWindow : Window
                 editor.Eol = value;
                 tab.IsDirty = true;
                 UpdateStatus();
+                Notify(Loc.F("Satır sonu: {0} (kaydedince uygulanır)", TextFileIO.EolName(value)), NoticeKind.Info);
             };
             eol.Items.Add(item);
         }
@@ -1046,6 +1086,7 @@ public sealed partial class MainWindow : Window
                 editor.Encoding = choice;
                 tab.IsDirty = true;
                 UpdateStatus();
+                Notify(Loc.F("Kodlama: {0} (kaydedince uygulanır)", Loc.T(choice.Name)), NoticeKind.Info);
             };
             convert.Items.Add(convertItem);
         }

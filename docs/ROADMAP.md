@@ -24,10 +24,11 @@
 - [x] Excel (XLSX, XLS) okuma, sayfa seçimi
 - [x] Noktalı virgülle ayrılmış dosyalarda ondalık virgülü tanıma
 - [x] Sağ tık menüsü: değere göre süzme ve hariç tutma, sıralama, kopyalama
-- [ ] Excel (XLSX) olarak dışa aktarma
+- [x] Excel (XLSX) olarak dışa aktarma
 - [ ] Koşullu süzgeçler (büyük, küçük, içerir), kolon gizleme ve dondurma, çoklu hücre seçimi
-- [ ] Uzun sorguları iptal etme, sorgu geçmişi
-- [ ] CSV açılış seçenekleri (ayraç, kodlama, başlık satırı) için diyalog
+- [x] Sorgu geçmişi
+- [ ] Uzun sorguları iptal etme
+- [x] CSV okuma seçenekleri: ayraç, ondalık ayırıcı, başlık satırı, kodlama, tüm kolonları metin olarak alma
 
 ## v0.3: Kod modu ve gezgin
 - [x] Kod düzenleyici: WebView2 içinde Monaco, yerel dosyalardan (internet yok); açılamazsa düz metin kutusuna düşer
@@ -35,9 +36,13 @@
 - [x] Bul ve değiştir (regex), satıra git, kod katlama, çoklu imleç, küçük harita
 - [x] Açık / koyu temaya uyan düzenleyici teması; yazı tipi, boyut, sözcük kaydırma ayarları
 - [x] Dosya gezgini paneli: klasör ağacı, açılamayan dosyalar soluk; ilk açılan dosyanın klasörünü izler
-- [ ] Gezginde açık dosyayı vurgulama, klasör değişikliklerini izleme, dosya adına göre süzme
-- [ ] Diskte değişen dosyayı fark edip yeniden yükleme
-- [ ] Kaydedilmemiş sekmeleri kapanışta saklama
+- [x] Gezginde sürücü ve sık kullanılan klasör seçimi, açık dosyayı vurgulama, dosya adına göre süzme
+- [x] Gezginde sağ tık: yeni dosya / klasör, yeniden adlandırma, Geri Dönüşüm Kutusu'na gönderme, yol kopyalama
+- [ ] Gezginde klasör değişikliklerini kendiliğinden izleme
+- [x] Diskte değişen dosyayı fark edip yeniden yükleme
+- [x] Kaydedilmemiş sekmeleri kapanışta saklama (ve yarım dakikada bir yedekleme)
+- [x] Belgeyi biçimlendirme: SQL, JSON, XML ve Monaco'nun desteklediği diller
+- [x] Markdown önizleme
 - [ ] Düzenleyici arayüzünü Türkçeleştirme (bul kutusu, sağ tık menüsü şu an İngilizce)
 
 ## v0.4: Belge modu, oturumlar, sağ tık menüsü
@@ -46,15 +51,24 @@
 - [x] PDF, HTML ve düz metin olarak dışa aktarma; yazdırma
 - [x] Adlandırılmış oturumlar: açık sekmeleri `.zdp` dosyasına kaydetme, açma, son oturumlar; `.zdp` çift tıklanınca oturum açılır
 - [x] Dosya Gezgini sağ tık menüsü: "Zero Data Peek ile aç"; hangi türlerde görüneceği Ayarlar'dan seçilir
-- [ ] RTF ve ODT açma; Markdown önizleme
+- [ ] RTF ve ODT açma
 - [ ] Tabloda satır / sütun ekleme ve silme, hücre birleştirme; resim boyutlandırma tutamaçları
 - [ ] Üstbilgi / altbilgi, sayfa numarası, sayfa kenar boşluğu ayarı
 - [ ] Belge düzenleyicide bul ve değiştir
 
-## v0.5: .zdp çalışma paketi
-- [ ] Oturuma veri sekmelerinin SQL sorgularını, süzgeçlerini ve kolon genişliklerini de kaydetme
+## v0.5: Günlük kullanım
+- [x] Rahatsız etmeyen bildirimler: kaydetme, dışa aktarma ve dosya işlemleri durum çubuğunda birkaç saniye görünür
+- [x] Sekme sağ tık menüsü: kaydet, farklı kaydet, çoğalt, yolu kopyala, gezginde göster, diğerlerini / sağdakileri / tümünü kapat
+- [x] Kompakt mod: alçak satırlar, küçük yazılar, dar boşluklar
+- [x] Geniş, bölümlere ayrılmış ayarlar penceresi; ayrıntılı Hakkında sayfası
+- [x] Oturuma veri sekmelerinin SQL sorgularını kaydetme
+- [ ] Bölünmüş görünüm, dosya karşılaştırma
+- [ ] Dosyalarda arama
+- [ ] Hızlı grafik (histogram, çubuk)
+
+## v0.6: .zdp çalışma paketi
+- [ ] Oturuma süzgeçleri ve kolon genişliklerini de kaydetme
 - [ ] Veri anlık görüntüsünü oturum dosyasına gömme (dosyayı başkasına gönderince analiz aynen açılsın)
 - [ ] `.zdp` için ayrı dosya simgesi
-- [ ] Bölünmüş görünüm, dosya karşılaştırma
 - [ ] Zero File Commander ile bütünleşme (önizleme)
 - [ ] Store paketi: DuckDB'nin yalnızca hedef platform kitaplığını paketleme (boyut)

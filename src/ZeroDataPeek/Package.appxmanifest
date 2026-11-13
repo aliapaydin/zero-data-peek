@@ -47,6 +47,7 @@
 
       <Extensions>
         <!-- "Birlikte aç" listesinde görünen türler (varsayılan uygulamayı değiştirmez) -->
+        <!-- .bat, .cmd, .ps1 gibi çalıştırılabilir betik türleri buraya eklenemez (Windows ayırmıştır, paketleme reddeder). Bunlar uygulamanın içinden ve sağ tık menüsünden yine açılır. -->
         <uap:Extension Category="windows.fileTypeAssociation">
           <uap:FileTypeAssociation Name="textfile">
             <uap:DisplayName>Zero Data Peek</uap:DisplayName>
@@ -99,9 +100,6 @@
               <uap:FileType>.rb</uap:FileType>
               <uap:FileType>.swift</uap:FileType>
               <uap:FileType>.lua</uap:FileType>
-              <uap:FileType>.ps1</uap:FileType>
-              <uap:FileType>.bat</uap:FileType>
-              <uap:FileType>.cmd</uap:FileType>
               <uap:FileType>.sh</uap:FileType>
               <uap:FileType>.dax</uap:FileType>
               <uap:FileType>.m</uap:FileType>

@@ -262,7 +262,7 @@ public sealed partial class RichDocumentView : Grid
     {
         try
         {
-            _web.CoreWebView2?.ShowPrintUI();
+            _web.CoreWebView2?.ShowPrintUI(CoreWebView2PrintDialogKind.Browser);
         }
         catch (Exception ex)
         {

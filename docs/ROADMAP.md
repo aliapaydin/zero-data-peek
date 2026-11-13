@@ -25,7 +25,8 @@
 - [x] Noktalı virgülle ayrılmış dosyalarda ondalık virgülü tanıma
 - [x] Sağ tık menüsü: değere göre süzme ve hariç tutma, sıralama, kopyalama
 - [x] Excel (XLSX) olarak dışa aktarma
-- [ ] Koşullu süzgeçler (büyük, küçük, içerir), kolon gizleme ve dondurma, çoklu hücre seçimi
+- [x] Koşullu süzgeçler: içerir, ile başlar / biter, büyük, küçük, arasında, boş; tek tek kaldırma
+- [ ] Kolon gizleme ve dondurma, çoklu hücre seçimi
 - [x] Sorgu geçmişi
 - [ ] Uzun sorguları iptal etme
 - [x] CSV okuma seçenekleri: ayraç, ondalık ayırıcı, başlık satırı, kodlama, tüm kolonları metin olarak alma
@@ -56,17 +57,18 @@
 - [ ] Üstbilgi / altbilgi, sayfa numarası, sayfa kenar boşluğu ayarı
 - [ ] Belge düzenleyicide bul ve değiştir
 
-## v0.5: Günlük kullanım
+## v1.0: Günlük kullanım (ilk mağaza sürümü)
 - [x] Rahatsız etmeyen bildirimler: kaydetme, dışa aktarma ve dosya işlemleri durum çubuğunda birkaç saniye görünür
 - [x] Sekme sağ tık menüsü: kaydet, farklı kaydet, çoğalt, yolu kopyala, gezginde göster, diğerlerini / sağdakileri / tümünü kapat
 - [x] Kompakt mod: alçak satırlar, küçük yazılar, dar boşluklar
 - [x] Geniş, bölümlere ayrılmış ayarlar penceresi; ayrıntılı Hakkında sayfası
 - [x] Oturuma veri sekmelerinin SQL sorgularını kaydetme
-- [ ] Bölünmüş görünüm, dosya karşılaştırma
-- [ ] Dosyalarda arama
+- [x] Bölünmüş görünüm: iki sekme yan yana
+- [x] Dosya karşılaştırma (yan yana / satır içi)
+- [x] Dosyalarda arama: büyük/küçük harf, tam sözcük, düzenli ifade, dosya adı süzgeçleri
 - [ ] Hızlı grafik (histogram, çubuk)
 
-## v0.6: .zdp çalışma paketi
+## v1.1: .zdp çalışma paketi
 - [ ] Oturuma süzgeçleri ve kolon genişliklerini de kaydetme
 - [ ] Veri anlık görüntüsünü oturum dosyasına gömme (dosyayı başkasına gönderince analiz aynen açılsın)
 - [ ] `.zdp` için ayrı dosya simgesi

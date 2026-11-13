@@ -12,7 +12,7 @@
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/lisans-MIT-1f6fd6" alt="MIT Lisansı"></a>
   <img src="https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-1f6fd6" alt="Windows 10 | 11">
-  <img src="https://img.shields.io/badge/sürüm-0.5.0-1f6fd6" alt="Sürüm 0.5.0">
+  <img src="https://img.shields.io/badge/sürüm-1.0.0-1f6fd6" alt="Sürüm 1.0.0">
   <img src="https://img.shields.io/badge/.NET-10-512bd4" alt=".NET 10">
 </p>
 
@@ -22,7 +22,7 @@
 
 ## Durum
 
-Uygulama aşama aşama geliştiriliyor. İlk dört aşama (kabuk, veri modu, kod modu ve gezgin, belge modu ve oturumlar) tamam; sıradaki aşamalar [yol haritasında](docs/ROADMAP.md).
+Sürüm 1.0: ilk beş aşama tamam. Sonraki adımlar [yol haritasında](docs/ROADMAP.md).
 
 | Aşama | İçerik | Durum |
 |---|---|---|
@@ -30,10 +30,18 @@ Uygulama aşama aşama geliştiriliyor. İlk dört aşama (kabuk, veri modu, kod
 | 2 | Veri modu: CSV, Parquet, JSON, Excel; tablo, kolon profili, SQL (DuckDB) | Tamam |
 | 3 | Kod modu ve gezgin: sözdizimi renklendirme, bul/değiştir, kod katlama, klasör paneli | Tamam |
 | 4 | Belge modu (DOCX, PDF), oturumlar (`.zdp`), sağ tık menüsü | Tamam |
-| 5 | `.zdp` çalışma paketi: sorgular ve veri de oturum dosyasında | Sırada |
+| 5 | Günlük kullanım: bildirimler, kompakt mod, bölünmüş görünüm, karşılaştırma, dosyalarda arama, koşullu süzgeçler | Tamam |
+| 6 | `.zdp` çalışma paketi: süzgeçler ve veri de oturum dosyasında | Sırada |
 
 ## Bugün neler var
 
+- **Bölünmüş görünüm (`Ctrl+Alt+B`):** iki sekme yan yana; örneğin solda SQL dosyası, sağda tablo. Ayraç sürüklenir, bölmeler yer değiştirir.
+- **Dosya karşılaştırma (`Ctrl+Alt+D`):** iki dosyanın ya da açık iki sekmenin farkı, yan yana ya da satır içi; farklar arasında gezinme.
+- **Dosyalarda ara (`Ctrl+Shift+F`):** bir klasördeki tüm metin dosyalarında arama; büyük/küçük harf, tam sözcük, düzenli ifade, dosya adı süzgeçleri. Sonuca tıklayınca dosya o satırda açılır.
+- **Koşullu süzgeçler (`Ctrl+Alt+F`):** tabloda içerir, ile başlar, büyük, küçük, arasında, boş gibi koşullar; birden fazla koşul birlikte uygulanır, tek tek kaldırılır.
+- **Kompakt mod (`Ctrl+Alt+K`):** alçak satırlar ve küçük yazılarla ekrana daha çok şey sığar.
+- **Kaydedilmemiş sekmeler saklanır:** kapatırken sormaz, bir sonraki açılışta yazdıkların geri gelir. Diskte değişen dosya fark edilip yeniden yüklenir.
+- **Biçimlendirme ve önizleme:** SQL, JSON ve XML'i tek tuşla biçimlendir (`Shift+Alt+F`); Markdown'ı yan yana önizle (`Ctrl+Shift+V`).
 - **Belge modu:** Word (`.docx`) belgelerini A4 görünümlü zengin metin düzenleyicide aç, düzenle, kaydet; PDF, HTML ya da düz metin olarak dışa aktar, yazdır. `Ctrl+Shift+N` yeni belge açar.
 - **Oturumlar:** açık sekmeleri adlandırılmış bir oturum olarak `.zdp` dosyasına kaydet (`Ctrl+Alt+S`); dosyayı açınca ya da çift tıklayınca sekmeler geri gelir.
 - **Sağ tık menüsü:** Dosya Gezgini'nde "Zero Data Peek ile aç". Hangi dosya türlerinde görüneceğini Ayarlar'dan seçersin.
@@ -73,6 +81,12 @@ Uygulama aşama aşama geliştiriliyor. İlk dört aşama (kabuk, veri modu, kod
 | `Ctrl+C` / `Ctrl+Shift+C` | Tabloda hücreyi / satırı kopyala |
 | `Alt+Z` | Sözcük kaydırma |
 | `Ctrl++` / `Ctrl+-` / `Ctrl+0` | Yakınlaştır / uzaklaştır / sıfırla |
+| `Ctrl+Alt+B` | Bölünmüş görünüm |
+| `Ctrl+Alt+D` | Dosyaları karşılaştır |
+| `Ctrl+Shift+F` | Dosyalarda ara |
+| `Ctrl+Alt+F` | Koşullu süzgeç (veri sekmesi) |
+| `Ctrl+Alt+K` | Kompakt mod |
+| `Shift+Alt+F` / `Ctrl+Shift+V` | Belgeyi biçimlendir / Markdown önizleme |
 | `Ctrl+,` | Ayarlar |
 
 ## Derleme
@@ -94,11 +108,11 @@ src/ZeroDataPeek/     WinUI 3 uygulaması
   Assets/docedit/     Belge düzenleyici sayfası (zengin metin, DOCX okuma ve yazma)
   Models/             Sekme modeli
   Services/           Veri motoru (DuckDB), ayarlar, dil, dosya türleri, metin okuma/yazma
-  Views/              Veri sekmesi, düzenleyici, bilgi sayfası, diyaloglar
+  Views/              Veri sekmesi, düzenleyiciler, karşılaştırma, dosyalarda arama, diyaloglar
   Controls/           Veri tablosu, panel ayırıcı
   Strings/en.json     İngilizce metinler
 tools/                Çeviri denetimi
-docs/                 Tasarım, yol haritası, yayımlama
+docs/                 Tasarım, yol haritası, yayımlama, mağaza sayfası metinleri
 ```
 
 ## Teşekkür

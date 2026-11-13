@@ -272,7 +272,7 @@ public static class Dialogs
     public static async Task AboutAsync(XamlRoot root, ElementTheme theme)
     {
         var version = typeof(Dialogs).Assembly.GetName().Version;
-        string versionText = version is null ? "0.5.0" : $"{version.Major}.{version.Minor}.{version.Build}";
+        string versionText = version is null ? "1.0.0" : $"{version.Major}.{version.Minor}.{version.Build}";
 
         var header = new Grid { ColumnSpacing = 16 };
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });

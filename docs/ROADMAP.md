@@ -73,4 +73,5 @@
 - [ ] Veri anlık görüntüsünü oturum dosyasına gömme (dosyayı başkasına gönderince analiz aynen açılsın)
 - [ ] `.zdp` için ayrı dosya simgesi
 - [ ] Zero File Commander ile bütünleşme (önizleme)
-- [ ] Store paketi: DuckDB'nin yalnızca hedef platform kitaplığını paketleme (boyut)
+- [x] Store paketi: yalnızca hedef platformun yerel kitaplıkları (paket 169 MB → 43 MB)
+- [ ] Kullanılmayan Windows ML kitaplıklarını (onnxruntime, DirectML) paketten çıkarma

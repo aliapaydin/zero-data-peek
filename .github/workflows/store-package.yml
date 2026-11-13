@@ -38,6 +38,23 @@ jobs:
         shell: pwsh
         run: Get-ChildItem packages -Recurse -Include *.msixupload, *.msixbundle | Select-Object FullName, Length
 
+      # Paket boyutunu izlemek için: x64 paketinin içindeki en büyük dosyalar.
+      - name: Paket içeriği
+        shell: pwsh
+        run: |
+          $upload = Get-ChildItem packages -Recurse -Filter *.msixupload | Select-Object -First 1
+          Copy-Item $upload.FullName upload.zip
+          Expand-Archive upload.zip -DestinationPath upload
+          Get-ChildItem upload | Select-Object Name, @{n='MB';e={[math]::Round($_.Length/1MB,1)}} | Format-Table -AutoSize
+          $bundle = Get-ChildItem upload -Filter *.msixbundle | Select-Object -First 1
+          Copy-Item $bundle.FullName bundle.zip
+          Expand-Archive bundle.zip -DestinationPath bundle
+          Get-ChildItem bundle | Select-Object Name, @{n='MB';e={[math]::Round($_.Length/1MB,1)}} | Format-Table -AutoSize
+          $x64 = Get-ChildItem bundle -Filter *x64*.msix | Select-Object -First 1
+          Copy-Item $x64.FullName x64.zip
+          Expand-Archive x64.zip -DestinationPath x64
+          Get-ChildItem x64 -Recurse -File | Sort-Object Length -Descending | Select-Object -First 30 @{n='MB';e={[math]::Round($_.Length/1MB,1)}}, @{n='Path';e={$_.FullName.Substring((Resolve-Path x64).Path.Length + 1)}} | Format-Table -AutoSize
+
       - uses: actions/upload-artifact@v4
         with:
           name: ZeroDataPeek-StoreUpload

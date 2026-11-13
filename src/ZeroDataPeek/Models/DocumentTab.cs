@@ -27,6 +27,9 @@ public sealed partial class DocumentTab : INotifyPropertyChanged
     /// <summary>Görünüm bir metin düzenleyiciyse o; değilse null.</summary>
     public ITextEditor? Editor => View as ITextEditor;
 
+    /// <summary>Görünüm zengin metin belgesiyse o; değilse null.</summary>
+    public RichDocumentView? Doc => View as RichDocumentView;
+
     /// <summary>Görünüm bir veri tablosuysa o; değilse null.</summary>
     public DataDocumentView? Data => View as DataDocumentView;
 
@@ -56,7 +59,7 @@ public sealed partial class DocumentTab : INotifyPropertyChanged
         }
     }
 
-    public DocumentKind Kind => FileKinds.KindOf(_filePath);
+    public DocumentKind Kind => View is RichDocumentView ? DocumentKind.Document : FileKinds.KindOf(_filePath);
 
     public string Glyph => FileKinds.Glyph(Kind);
 

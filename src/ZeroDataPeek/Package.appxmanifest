@@ -6,12 +6,15 @@
   xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
   xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
   xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
-  IgnorableNamespaces="uap rescap">
+  xmlns:desktop4="http://schemas.microsoft.com/appx/manifest/desktop/windows10/4"
+  xmlns:desktop5="http://schemas.microsoft.com/appx/manifest/desktop/windows10/5"
+  xmlns:com="http://schemas.microsoft.com/appx/manifest/com/windows10"
+  IgnorableNamespaces="uap rescap desktop4 desktop5 com">
 
   <Identity
     Name="AliApaydin.ZeroDataPeek"
     Publisher="CN=BA57EB18-640B-433D-88C6-EB1D10E9A905"
-    Version="0.3.0.0" />
+    Version="0.4.0.0" />
 
   <Properties>
     <DisplayName>Zero Data Peek</DisplayName>
@@ -58,6 +61,7 @@
               <uap:FileType>.tab</uap:FileType>
               <uap:FileType>.parquet</uap:FileType>
               <uap:FileType>.xlsx</uap:FileType>
+              <uap:FileType>.docx</uap:FileType>
               <uap:FileType>.xls</uap:FileType>
               <uap:FileType>.json</uap:FileType>
               <uap:FileType>.jsonl</uap:FileType>
@@ -107,6 +111,33 @@
             </uap:SupportedFileTypes>
           </uap:FileTypeAssociation>
         </uap:Extension>
+
+        <!-- Oturum dosyaları: çift tıklayınca oturumdaki sekmeler açılır -->
+        <uap:Extension Category="windows.fileTypeAssociation">
+          <uap:FileTypeAssociation Name="zdpsession">
+            <uap:DisplayName>Zero Data Peek Oturumu</uap:DisplayName>
+            <uap:Logo>Assets\Square44x44Logo.png</uap:Logo>
+            <uap:SupportedFileTypes>
+              <uap:FileType>.zdp</uap:FileType>
+            </uap:SupportedFileTypes>
+          </uap:FileTypeAssociation>
+        </uap:Extension>
+
+        <!-- Dosya Gezgini sağ tık menüsü: "Zero Data Peek ile aç" (src/ZdpShell). Hangi türlerde görüneceğini eklenti, Ayarlar'daki seçime göre kendisi belirler. -->
+        <desktop4:Extension Category="windows.fileExplorerContextMenus">
+          <desktop4:FileExplorerContextMenus>
+            <desktop5:ItemType Type="*">
+              <desktop5:Verb Id="ZeroDataPeek" Clsid="5752260C-3CA3-4DC6-A53F-8E859ECC2D3A" />
+            </desktop5:ItemType>
+          </desktop4:FileExplorerContextMenus>
+        </desktop4:Extension>
+        <com:Extension Category="windows.comServer">
+          <com:ComServer>
+            <com:SurrogateServer DisplayName="Zero Data Peek Shell Extension">
+              <com:Class Id="5752260C-3CA3-4DC6-A53F-8E859ECC2D3A" Path="ZdpShell.dll" ThreadingModel="STA" />
+            </com:SurrogateServer>
+          </com:ComServer>
+        </com:Extension>
       </Extensions>
     </Application>
   </Applications>

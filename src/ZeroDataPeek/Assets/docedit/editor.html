@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' data: blob: 'unsafe-inline'; connect-src 'self'">
+<title>Zero Data Peek</title>
+<style id="chrome-style">
+  :root {
+    --bg: #ECEEF1; --bar: #FBFBFC; --bar-border: #DCDFE4; --text: #1B1E25; --hover: rgba(0,0,0,.07); --active: rgba(31,111,214,.18);
+    --accent: #1F6FD6; --field: #FFFFFF; --field-border: #C9CDD4; --shadow: 0 1px 3px rgba(0,0,0,.12), 0 8px 24px rgba(0,0,0,.08);
+  }
+  :root.dark {
+    --bg: #14161B; --bar: #22252D; --bar-border: #33373F; --text: #E8EAEE; --hover: rgba(255,255,255,.09); --active: rgba(92,160,255,.28);
+    --accent: #5CA0FF; --field: #2B2F38; --field-border: #454A54; --shadow: 0 1px 3px rgba(0,0,0,.5), 0 8px 24px rgba(0,0,0,.35);
+  }
+  html, body { margin: 0; height: 100%; }
+  body { background: var(--bg); color: var(--text); font: 13px 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden; }
+  #toolbar { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 2px; padding: 6px 10px; background: var(--bar); border-bottom: 1px solid var(--bar-border); user-select: none; }
+  #toolbar .sep { width: 1px; height: 20px; margin: 0 6px; background: var(--bar-border); }
+  #toolbar button { all: unset; box-sizing: border-box; min-width: 30px; height: 30px; padding: 0 7px; border-radius: 5px; display: inline-flex; align-items: center; justify-content: center; color: var(--text); cursor: default; position: relative; }
+  #toolbar button:hover { background: var(--hover); }
+  #toolbar button.on { background: var(--active); }
+  #toolbar button svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+  #toolbar button .glyph { font: 600 15px 'Segoe UI', serif; line-height: 1; }
+  #toolbar button .bar { position: absolute; left: 7px; right: 7px; bottom: 4px; height: 3px; border-radius: 2px; }
+  #toolbar select { height: 30px; border-radius: 5px; border: 1px solid var(--field-border); background: var(--field); color: var(--text); font: inherit; padding: 0 4px; outline: none; }
+  #toolbar select:focus { border-color: var(--accent); }
+  #toolbar input[type=color], #toolbar input[type=file] { position: absolute; width: 0; height: 0; opacity: 0; pointer-events: none; }
+  #scroller { flex: 1; overflow: auto; padding: 24px 24px 48px; }
+  #page { box-sizing: border-box; width: 794px; min-height: 1123px; margin: 0 auto; padding: 96px; background: #FFFFFF; box-shadow: var(--shadow); outline: none; border-radius: 2px; }
+  @media print {
+    body { background: #FFF; display: block; overflow: visible; height: auto; }
+    #toolbar { display: none; }
+    #scroller { overflow: visible; padding: 0; }
+    #page { width: auto; min-height: 0; margin: 0; padding: 0; box-shadow: none; zoom: 1 !important; }
+    @page { size: A4; margin: 2.54cm; }
+  }
+</style>
+<style id="doc-style">
+  .doc { color: #000000; font-family: Calibri, 'Segoe UI', Arial, sans-serif; font-size: 11pt; line-height: 1.35; white-space: pre-wrap; tab-size: 8; overflow-wrap: break-word; }
+  .doc p { margin: 0 0 8pt; }
+  .doc h1, .doc h2, .doc h3, .doc h4, .doc h5, .doc h6 { font-weight: 700; line-height: 1.2; margin: 14pt 0 6pt; }
+  .doc h1 { font-size: 20pt; margin-top: 16pt; } .doc h2 { font-size: 16pt; } .doc h3 { font-size: 14pt; }
+  .doc h4 { font-size: 12pt; } .doc h5, .doc h6 { font-size: 11pt; }
+  .doc ul, .doc ol { margin: 0 0 8pt; padding-left: 36px; }
+  .doc li { margin: 0 0 2pt; }
+  .doc table { border-collapse: collapse; margin: 0 0 8pt; width: 100%; table-layout: fixed; }
+  .doc td, .doc th { border: 1px solid #A0A0A0; padding: 4px 8px; vertical-align: top; }
+  .doc td p, .doc th p { margin: 0; }
+  .doc th { background: #F0F0F0; font-weight: 700; }
+  .doc img { max-width: 100%; height: auto; }
+  .doc a { color: #0563C1; text-decoration: underline; }
+  .doc blockquote { margin: 0 0 8pt 36px; }
+  .doc hr { border: none; border-top: 1px solid #A0A0A0; margin: 8pt 0; }
+</style>
+</head>
+<body>
+<div id="toolbar"></div>
+<div id="scroller"><div id="page" class="doc" contenteditable="true" spellcheck="false"><p><br></p></div></div>
+<script src="jszip.min.js"></script>
+<script src="docx.js"></script>
+<script>
+// Zero Data Peek belge düzenleyicisi: contentEditable sayfa + araç çubuğu + uygulama köprüsü.
+// Uygulama → sayfa: chrome.webview 'message' (load, export, options, shortcuts) ve zdoc.* işlevleri.
+// Sayfa → uygulama: ready, loaded, failed, exported, changed, stats, zoom, shortcut.
+(function () {
+  'use strict';
+  var host = window.chrome && window.chrome.webview;
+  function post(message) { if (host) host.postMessage(message); }
+
+  var page = document.getElementById('page');
+  var toolbar = document.getElementById('toolbar');
+  var shortcuts = [];
+  var loading = false;
+  var savedRange = null;
+  var lang = 'tr';
+  var statsTimer = 0;
+
+  var TEXT = {
+    tr: { undo: 'Geri al (Ctrl+Z)', redo: 'Yinele (Ctrl+Y)', style: 'Paragraf stili', normal: 'Normal', h1: 'Başlık 1', h2: 'Başlık 2', h3: 'Başlık 3',
+          font: 'Yazı tipi', size: 'Yazı boyutu', bold: 'Kalın (Ctrl+B)', italic: 'İtalik (Ctrl+I)', underline: 'Altı çizili (Ctrl+U)', strike: 'Üstü çizili',
+          color: 'Yazı rengi', highlight: 'Vurgu rengi', left: 'Sola hizala', center: 'Ortala', right: 'Sağa hizala', justify: 'İki yana yasla',
+          bullets: 'Madde işaretleri', numbers: 'Numaralandırma', outdent: 'Girintiyi azalt', indent: 'Girintiyi artır',
+          link: 'Bağlantı ekle', image: 'Resim ekle', table: 'Tablo ekle', clear: 'Biçimlendirmeyi temizle', linkPrompt: 'Bağlantı adresi:' },
+    en: { undo: 'Undo (Ctrl+Z)', redo: 'Redo (Ctrl+Y)', style: 'Paragraph style', normal: 'Normal', h1: 'Heading 1', h2: 'Heading 2', h3: 'Heading 3',
+          font: 'Font', size: 'Font size', bold: 'Bold (Ctrl+B)', italic: 'Italic (Ctrl+I)', underline: 'Underline (Ctrl+U)', strike: 'Strikethrough',
+          color: 'Text color', highlight: 'Highlight color', left: 'Align left', center: 'Center', right: 'Align right', justify: 'Justify',
+          bullets: 'Bullets', numbers: 'Numbering', outdent: 'Decrease indent', indent: 'Increase indent',
+          link: 'Insert link', image: 'Insert image', table: 'Insert table', clear: 'Clear formatting', linkPrompt: 'Link address:' }
+  };
+  function t(key) { return (TEXT[lang] || TEXT.tr)[key] || key; }
+
+  var ICONS = {
+    undo: '<path d="M6 3 2.5 6.5 6 10"/><path d="M2.5 6.5H9a4.5 4.5 0 0 1 0 9H6"/>',
+    redo: '<path d="M10 3l3.5 3.5L10 10"/><path d="M13.5 6.5H7a4.5 4.5 0 0 0 0 9h3"/>',
+    left: '<path d="M2 3.5h12M2 6.5h8M2 9.5h12M2 12.5h8"/>',
+    center: '<path d="M2 3.5h12M4 6.5h8M2 9.5h12M4 12.5h8"/>',
+    right: '<path d="M2 3.5h12M6 6.5h8M2 9.5h12M6 12.5h8"/>',
+    justify: '<path d="M2 3.5h12M2 6.5h12M2 9.5h12M2 12.5h12"/>',
+    bullets: '<path d="M6 4h8M6 8h8M6 12h8"/><circle cx="2.8" cy="4" r=".8" fill="currentColor"/><circle cx="2.8" cy="8" r=".8" fill="currentColor"/><circle cx="2.8" cy="12" r=".8" fill="currentColor"/>',
+    numbers: '<path d="M6.5 4h7.5M6.5 8h7.5M6.5 12h7.5"/><path d="M2.2 2.8l1-.6v3.6M2 10.2c.3-.6 1.8-.7 1.8.2 0 .8-1.8 1.4-1.8 2.4h2" stroke-width="1.1"/>',
+    outdent: '<path d="M2 3h12M8 6.5h6M8 9.5h6M2 13h12M5.5 6 3 8l2.5 2"/>',
+    indent: '<path d="M2 3h12M8 6.5h6M8 9.5h6M2 13h12M3 6l2.5 2L3 10"/>',
+    link: '<path d="M6.8 9.2a2.6 2.6 0 0 0 3.7 0l2.2-2.2A2.6 2.6 0 0 0 9 3.3l-.9.9"/><path d="M9.2 6.8a2.6 2.6 0 0 0-3.7 0L3.3 9A2.6 2.6 0 0 0 7 12.7l.9-.9"/>',
+    image: '<rect x="2" y="3" width="12" height="10" rx="1.5"/><circle cx="5.6" cy="6.4" r="1"/><path d="M2.5 11.5 6 8.5l2.5 2 2-1.6 3 2.6"/>',
+    table: '<rect x="2" y="3" width="12" height="10" rx="1.2"/><path d="M2 6.5h12M2 9.8h12M6 3v10M10 3v10"/>',
+    clear: '<path d="M4 3h8M8 3 6 13M3 13h5"/><path d="m10.5 9.5 3.5 3.5m0-3.5-3.5 3.5" stroke-width="1.3"/>'
+  };
+  function icon(name) { return '<svg viewBox="0 0 16 16">' + ICONS[name] + '</svg>'; }
+
+  var FONTS = ['Calibri', 'Segoe UI', 'Arial', 'Times New Roman', 'Cambria', 'Georgia', 'Verdana', 'Tahoma', 'Courier New', 'Consolas', 'Cascadia Mono'];
+  var SIZES = [8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 36, 48, 72];
+  var controls = {};
+
+  // ------------------------------------------------------------------ seçim
+
+  document.addEventListener('selectionchange', function () {
+    var selection = window.getSelection();
+    if (selection.rangeCount && page.contains(selection.anchorNode)) savedRange = selection.getRangeAt(0).cloneRange();
+    queueState();
+  });
+  function restoreSelection() {
+    page.focus();
+    if (!savedRange) return;
+    var selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(savedRange);
+  }
+  function exec(command, value) {
+    restoreSelection();
+    document.execCommand('styleWithCSS', false, true);
+    document.execCommand(command, false, value === undefined ? null : value);
+    normalize();
+    changed();
+    queueState();
+  }
+  // Tarayıcı listeyi bazen paragrafın içine koyar (<p><ul>…): geçersiz iç içeliği düzeltir.
+  function normalize() {
+    var lists = page.querySelectorAll('p > ul, p > ol, p > table');
+    for (var i = 0; i < lists.length; i++) {
+      var paragraph = lists[i].parentElement;
+      if (!paragraph || paragraph.parentElement === null) continue;
+      var before = document.createDocumentFragment();
+      while (paragraph.firstChild) before.appendChild(paragraph.firstChild);
+      paragraph.replaceWith(before);
+    }
+  }
+  // İmlecin bulunduğu, sayfanın doğrudan çocuğu olan blok.
+  function topBlock() {
+    var node = savedRange ? savedRange.endContainer : null;
+    while (node && node.parentNode !== page) node = node.parentNode;
+    return node && node.parentNode === page ? node : null;
+  }
+  function applyFontSize(pt) {
+    restoreSelection();
+    document.execCommand('styleWithCSS', false, true);
+    document.execCommand('fontSize', false, '7');
+    var marked = page.querySelectorAll('span[style*="xxx-large"], font[size="7"]');
+    for (var i = 0; i < marked.length; i++) { marked[i].removeAttribute('size'); marked[i].style.fontSize = pt + 'pt'; }
+    changed();
+  }
+
+  // ------------------------------------------------------------------ araç çubuğu
+
+  function button(id, content, action) {
+    var b = document.createElement('button');
+    b.innerHTML = content;
+    b.dataset.id = id;
+    b.addEventListener('mousedown', function (e) { e.preventDefault(); }); // seçim kaybolmasın
+    b.addEventListener('click', function () { action(b); });
+    toolbar.appendChild(b);
+    controls[id] = b;
+    return b;
+  }
+  function separator() { var s = document.createElement('span'); s.className = 'sep'; toolbar.appendChild(s); }
+  function select(id, options, action, width) {
+    var s = document.createElement('select');
+    s.style.width = width + 'px';
+    options.forEach(function (o) { var e = document.createElement('option'); e.value = o.value; e.textContent = o.label; s.appendChild(e); });
+    s.addEventListener('change', function () { action(s.value); });
+    toolbar.appendChild(s);
+    controls[id] = s;
+    return s;
+  }
+  function colorButton(id, glyph, initial, command) {
+    var b = button(id, '<span class="glyph">' + glyph + '</span><span class="bar"></span>', function () { apply(input.value); });
+    var bar = b.querySelector('.bar');
+    bar.style.background = initial;
+    var input = document.createElement('input');
+    input.type = 'color';
+    input.value = initial;
+    b.appendChild(input);
+    function apply(value) { bar.style.background = value; exec(command, value); }
+    b.addEventListener('contextmenu', function (e) { e.preventDefault(); input.click(); });
+    b.addEventListener('dblclick', function () { input.click(); });
+    input.addEventListener('input', function () { apply(input.value); });
+    // Küçük ok: renk seçiciyi açar.
+    var more = button(id + 'More', '<svg viewBox="0 0 16 16" style="width:9px;height:9px"><path d="M3 6l5 5 5-5"/></svg>', function () { input.click(); });
+    more.style.minWidth = '16px';
+    more.style.padding = '0 2px';
+    more.style.marginLeft = '-3px';
+    return b;
+  }
+
+  function buildToolbar() {
+    toolbar.innerHTML = '';
+    controls = {};
+    button('undo', icon('undo'), function () { exec('undo'); });
+    button('redo', icon('redo'), function () { exec('redo'); });
+    separator();
+    select('style', [{ value: 'P', label: t('normal') }, { value: 'H1', label: t('h1') }, { value: 'H2', label: t('h2') }, { value: 'H3', label: t('h3') }],
+      function (v) { exec('formatBlock', '<' + v + '>'); }, 96);
+    select('font', FONTS.map(function (f) { return { value: f, label: f }; }), function (v) { exec('fontName', v); }, 132);
+    select('size', SIZES.map(function (s) { return { value: String(s), label: String(s) }; }), function (v) { applyFontSize(parseFloat(v)); }, 54);
+    separator();
+    button('bold', '<span class="glyph">B</span>', function () { exec('bold'); });
+    button('italic', '<span class="glyph" style="font-style:italic">I</span>', function () { exec('italic'); });
+    button('underline', '<span class="glyph" style="text-decoration:underline">U</span>', function () { exec('underline'); });
+    button('strike', '<span class="glyph" style="text-decoration:line-through">S</span>', function () { exec('strikeThrough'); });
+    colorButton('color', 'A', '#C00000', 'foreColor');
+    colorButton('highlight', 'ab', '#FFF200', 'hiliteColor');
+    separator();
+    button('left', icon('left'), function () { exec('justifyLeft'); });
+    button('center', icon('center'), function () { exec('justifyCenter'); });
+    button('right', icon('right'), function () { exec('justifyRight'); });
+    button('justify', icon('justify'), function () { exec('justifyFull'); });
+    separator();
+    button('bullets', icon('bullets'), function () { exec('insertUnorderedList'); });
+    button('numbers', icon('numbers'), function () { exec('insertOrderedList'); });
+    button('outdent', icon('outdent'), function () { exec('outdent'); });
+    button('indent', icon('indent'), function () { exec('indent'); });
+    separator();
+    button('link', icon('link'), insertLink);
+    var imageButton = button('image', icon('image'), function () { file.click(); });
+    var file = document.createElement('input');
+    file.type = 'file';
+    file.accept = 'image/png,image/jpeg,image/gif,image/bmp';
+    file.addEventListener('change', function () {
+      var chosen = file.files && file.files[0];
+      file.value = '';
+      if (!chosen) return;
+      var reader = new FileReader();
+      reader.onload = function () { exec('insertImage', reader.result); };
+      reader.readAsDataURL(chosen);
+    });
+    imageButton.appendChild(file);
+    button('table', icon('table'), insertTable);
+    button('clear', icon('clear'), function () { exec('removeFormat'); });
+
+    Object.keys(controls).forEach(function (id) {
+      var key = id.replace(/More$/, '');
+      controls[id].title = t(key);
+      if (controls[id].tagName === 'SELECT') controls[id].setAttribute('aria-label', t(key));
+    });
+  }
+
+  function insertLink() {
+    var selection = window.getSelection();
+    var existing = selection.anchorNode && selection.anchorNode.parentElement ? selection.anchorNode.parentElement.closest('a') : null;
+    var url = window.prompt(t('linkPrompt'), existing ? existing.getAttribute('href') : 'https://');
+    if (url === null) return;
+    url = url.trim();
+    if (!url || url === 'https://') { exec('unlink'); return; }
+    if (!/^(https?:|mailto:)/i.test(url)) url = 'https://' + url;
+    if (savedRange && savedRange.collapsed) exec('insertHTML', '<a href="' + url.replace(/"/g, '&quot;') + '">' + url.replace(/</g, '&lt;') + '</a>');
+    else exec('createLink', url);
+  }
+
+  // Tablo, imlecin bulunduğu bloğun hemen altına eklenir (liste ya da paragraf içine gömülmez).
+  function insertTable() {
+    var table = document.createElement('table'), body = document.createElement('tbody');
+    for (var r = 0; r < 3; r++) {
+      var row = document.createElement('tr');
+      for (var c = 0; c < 3; c++) { var cell = document.createElement('td'); cell.innerHTML = '<br>'; row.appendChild(cell); }
+      body.appendChild(row);
+    }
+    table.appendChild(body);
+    var after = document.createElement('p');
+    after.innerHTML = '<br>';
+    var anchor = topBlock();
+    if (anchor) { anchor.after(table, after); if (anchor.tagName === 'P' && anchor.textContent === '' && !anchor.querySelector('img')) anchor.remove(); }
+    else page.append(table, after);
+    var range = document.createRange();
+    range.setStart(body.rows[0].cells[0], 0);
+    range.collapse(true);
+    savedRange = range;
+    restoreSelection();
+    changed();
+  }
+
+  // Araç çubuğu, imlecin bulunduğu yerin biçimini yansıtır.
+  var stateTimer = 0;
+  function queueState() { if (!stateTimer) stateTimer = setTimeout(updateState, 60); }
+  function updateState() {
+    stateTimer = 0;
+    var selection = window.getSelection();
+    if (!selection.rangeCount || !page.contains(selection.anchorNode)) return;
+    var map = { bold: 'bold', italic: 'italic', underline: 'underline', strike: 'strikeThrough', left: 'justifyLeft', center: 'justifyCenter',
+                right: 'justifyRight', justify: 'justifyFull', bullets: 'insertUnorderedList', numbers: 'insertOrderedList' };
+    Object.keys(map).forEach(function (id) {
+      var on = false;
+      try { on = document.queryCommandState(map[id]); } catch (e) { on = false; }
+      if (controls[id]) controls[id].classList.toggle('on', on);
+    });
+    var element = selection.anchorNode.nodeType === 1 ? selection.anchorNode : selection.anchorNode.parentElement;
+    if (!element) return;
+    var cs = getComputedStyle(element);
+    var family = (cs.fontFamily || '').split(',')[0].trim().replace(/^['"]|['"]$/g, '');
+    setSelect(controls.font, family, family);
+    var pt = Math.round(parseFloat(cs.fontSize) * 0.75 * 2) / 2;
+    setSelect(controls.size, String(pt), String(pt));
+    var block = element.closest('h1,h2,h3,h4,h5,h6,p,li,td,div');
+    var tag = block && /^H[1-3]$/.test(block.tagName) ? block.tagName : 'P';
+    if (controls.style) controls.style.value = tag;
+  }
+  function setSelect(control, value, label) {
+    if (!control || !value) return;
+    var found = false;
+    for (var i = 0; i < control.options.length; i++) {
+      if (control.options[i].value.toLowerCase() === value.toLowerCase()) { control.selectedIndex = i; found = true; }
+      else if (control.options[i].dataset.extra) { control.remove(i); i--; }
+    }
+    if (found) return;
+    var option = document.createElement('option'); // listede olmayan değer (belgeden gelen yazı tipi ya da boyut)
+    option.value = value; option.textContent = label; option.dataset.extra = '1';
+    control.appendChild(option);
+    control.value = value;
+  }
+
+  // ------------------------------------------------------------------ olaylar
+
+  function changed() {
+    if (loading) return;
+    post({ type: 'changed' });
+    queueStats();
+  }
+  function queueStats() {
+    if (statsTimer) return;
+    statsTimer = setTimeout(function () {
+      statsTimer = 0;
+      var text = page.innerText || '';
+      var words = (text.match(/[^\s]+/g) || []).length;
+      post({ type: 'stats', words: words, chars: text.replace(/\n/g, '').length });
+    }, 300);
+  }
+  page.addEventListener('input', changed);
+  page.addEventListener('keydown', function (e) {
+    if (e.key !== 'Tab' || e.ctrlKey || e.altKey) return;
+    e.preventDefault();
+    var inList = false, node = window.getSelection().anchorNode;
+    if (node) { var el = node.nodeType === 1 ? node : node.parentElement; inList = !!(el && el.closest('li')); }
+    if (inList) document.execCommand(e.shiftKey ? 'outdent' : 'indent');
+    else if (!e.shiftKey) document.execCommand('insertText', false, '\t');
+    changed();
+  });
+  // Sayfa hep en az bir paragraf içersin (her şey silinince çıplak metin kalmasın).
+  page.addEventListener('input', function () { if (!page.firstChild) page.innerHTML = '<p><br></p>'; });
+
+  document.addEventListener('wheel', function (e) {
+    if (!e.ctrlKey) return;
+    e.preventDefault();
+    post({ type: 'zoom', delta: e.deltaY < 0 ? 10 : -10 });
+  }, { capture: true, passive: false });
+
+  document.addEventListener('keydown', function (e) {
+    for (var i = 0; i < shortcuts.length; i++) {
+      var s = shortcuts[i];
+      if (s.key === e.keyCode && s.ctrl === e.ctrlKey && s.shift === e.shiftKey && s.alt === e.altKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        post({ type: 'shortcut', id: s.id });
+        return;
+      }
+    }
+  }, true);
+
+  // ------------------------------------------------------------------ içerik
+
+  function escapeHtml(text) { return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
+  // Dışarıdan gelen HTML'den betik ve olay öznitelikleri ayıklanır.
+  function sanitize(html) {
+    var doc = new DOMParser().parseFromString(html, 'text/html');
+    var bad = doc.querySelectorAll('script,style,iframe,object,embed,link,meta,form,input,button,textarea,select');
+    for (var i = 0; i < bad.length; i++) bad[i].remove();
+    var all = doc.body.querySelectorAll('*');
+    for (var j = 0; j < all.length; j++) {
+      var attributes = all[j].attributes;
+      for (var k = attributes.length - 1; k >= 0; k--) {
+        var name = attributes[k].name.toLowerCase(), value = attributes[k].value;
+        if (name.indexOf('on') === 0 || ((name === 'href' || name === 'src') && /^\s*javascript:/i.test(value))) all[j].removeAttribute(attributes[k].name);
+      }
+    }
+    var holder = doc.body.querySelector('.doc');
+    return { html: (holder || doc.body).innerHTML, style: holder ? holder.getAttribute('style') : null };
+  }
+
+  function setContent(html, font, size) {
+    loading = true;
+    try {
+      page.style.fontFamily = font ? "'" + String(font).replace(/['\\]/g, '') + "', Calibri, 'Segoe UI', Arial, sans-serif" : '';
+      page.style.fontSize = size ? size + 'pt' : '';
+      page.innerHTML = html && html.trim() ? html : '<p><br></p>';
+      document.getElementById('scroller').scrollTop = 0;
+      savedRange = null;
+    } finally {
+      loading = false;
+    }
+    queueStats();
+  }
+
+  var zdoc = window.zdoc = {
+    // format: 'empty' | 'docx' (base64) | 'html' | 'text'. Sözle döner: { losses: [...] }
+    load: function (format, data) {
+      if (format === 'docx') {
+        return ZdpDocx.read(data).then(function (result) {
+          setContent(result.html, result.font, result.size);
+          return { losses: result.losses };
+        });
+      }
+      if (format === 'html') {
+        var clean = sanitize(data || '');
+        setContent(clean.html);
+        if (clean.style) { loading = true; page.setAttribute('style', clean.style); loading = false; }
+      } else if (format === 'text') {
+        setContent(String(data || '').replace(/\r\n?/g, '\n').split('\n').map(function (line) { return '<p>' + (escapeHtml(line) || '<br>') + '</p>'; }).join(''));
+      } else {
+        setContent('');
+      }
+      return Promise.resolve({ losses: [] });
+    },
+    exportDocx: function () { return ZdpDocx.write(page); },
+    // Tek başına açılabilen HTML belgesi.
+    html: function (title) {
+      var style = page.getAttribute('style');
+      var zoomless = style ? style.replace(/zoom\s*:[^;]+;?/g, '').trim() : '';
+      return '<!DOCTYPE html>\n<html>\n<head>\n<meta charset="utf-8">\n<title>' + escapeHtml(title || '') + '</title>\n<style>\nbody { margin: 0; background: #ECEEF1; }\n' +
+        '.doc { box-sizing: border-box; max-width: 794px; margin: 24px auto; padding: 96px; background: #FFF; }\n' +
+        '@media print { body { background: #FFF; } .doc { margin: 0; padding: 0; max-width: none; } @page { size: A4; margin: 2.54cm; } }\n' +
+        document.getElementById('doc-style').textContent + '</style>\n</head>\n<body>\n<div class="doc"' + (zoomless ? ' style="' + zoomless.replace(/"/g, "'") + '"' : '') + '>' +
+        page.innerHTML + '</div>\n</body>\n</html>\n';
+    },
+    text: function () { return page.innerText; },
+    options: function (o) {
+      if (o.theme) document.documentElement.classList.toggle('dark', o.theme === 'dark');
+      if (o.zoom) page.style.zoom = String(o.zoom / 100);
+      if (o.lang && o.lang !== lang) { lang = o.lang === 'en' ? 'en' : 'tr'; buildToolbar(); }
+    },
+    shortcuts: function (list) { shortcuts = list || []; },
+    command: function (id) {
+      if (id === 'focus') { restoreSelection(); return; }
+      if (id === 'selectAll') { page.focus(); document.execCommand('selectAll'); return; }
+      exec(id);
+    }
+  };
+
+  if (host) {
+    host.addEventListener('message', function (e) {
+      var m = e.data;
+      if (!m) return;
+      if (m.type === 'load') {
+        zdoc.load(m.format, m.data).then(function (result) {
+          post({ type: 'loaded', requestId: m.requestId, losses: result.losses });
+        }, function (error) {
+          post({ type: 'failed', requestId: m.requestId, message: String(error && error.message ? error.message : error) });
+        });
+      } else if (m.type === 'export') {
+        zdoc.exportDocx().then(function (data) {
+          post({ type: 'exported', requestId: m.requestId, data: data });
+        }, function (error) {
+          post({ type: 'failed', requestId: m.requestId, message: String(error && error.message ? error.message : error) });
+        });
+      } else if (m.type === 'options') zdoc.options(m);
+      else if (m.type === 'shortcuts') zdoc.shortcuts(m.list);
+    });
+  }
+
+  document.execCommand('defaultParagraphSeparator', false, 'p');
+  buildToolbar();
+  post({ type: 'ready' });
+})();
+</script>
+</body>
+</html>

@@ -8,6 +8,7 @@ for f in root.rglob("*.cs"):
     s = "\n".join(l for l in f.read_text(encoding="utf-8").splitlines() if not l.lstrip().startswith("//"))
     for m in re.finditer(r'Loc\.[TF]\(\s*' + cs_str, s): keys.add(m.group(1))
     for m in re.finditer(r'\bAdd\("\w+",\s*' + cs_str, s): keys.add(m.group(1))
+    for m in re.finditer(r'^\s*\(' + cs_str + r',\s*new\[\]', s, re.M): keys.add(m.group(1))
     for m in re.finditer(r'new EncodingChoice\("[^"]+",\s*' + cs_str, s): keys.add(m.group(1))
     for m in re.finditer(r'new\("[\w-]+",\s*' + cs_str + r',\s*\(\)', s): keys.add(m.group(1))
 keys = {k.replace('\\"', '"').replace('\\n', '\n') for k in keys}

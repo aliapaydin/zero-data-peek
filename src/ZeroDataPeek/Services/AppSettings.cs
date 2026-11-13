@@ -64,6 +64,23 @@ public sealed class AppSettings
     }
     public string SessionActiveFile { get => Get(string.Empty); set => Set(value); }
 
+    /// <summary>Son kullanılan adlandırılmış oturum dosyaları (.zdp).</summary>
+    public IReadOnlyList<string> RecentSessions
+    {
+        get => Split(Get(string.Empty));
+        set => Set(Join(value, 8));
+    }
+
+    public void AddRecentSession(string path)
+    {
+        var list = RecentSessions.Where(p => !string.Equals(p, path, StringComparison.OrdinalIgnoreCase)).ToList();
+        list.Insert(0, path);
+        RecentSessions = list;
+    }
+
+    /// <summary>Sağ tık menüsünde etkin dosya türleri: "" varsayılan, "-" hiçbiri, yoksa "|" ile ayrılmış uzantılar.</summary>
+    public string ShellTypes { get => Get(string.Empty); set => Set(value); }
+
     // ---- Yerleşim (hatırlanır) ----
     public string MainWindowBounds { get => Get(string.Empty); set => Set(value); }
 

@@ -123,6 +123,41 @@ public static class Dialogs
         panel.Children.Add(Row(Loc.T("Durum çubuğu"), statusSwitch));
         panel.Children.Add(Row(Loc.T("Açılışta son oturumu geri yükle"), sessionSwitch));
 
+        // Dosya Gezgini sağ tık menüsü: "Zero Data Peek ile aç" hangi türlerde görünsün
+        var enabledTypes = new HashSet<string>(ShellMenu.Enabled(settings), StringComparer.OrdinalIgnoreCase);
+        var typeBoxes = new List<CheckBox>();
+        var shellPanel = new StackPanel { Spacing = 4 };
+        shellPanel.Children.Add(new TextBlock
+        {
+            Text = Loc.T("İşaretli türlerde, dosyaya sağ tıklayınca \"Zero Data Peek ile aç\" seçeneği görünür."),
+            TextWrapping = TextWrapping.Wrap,
+            Opacity = 0.65,
+            Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
+        });
+        foreach (var (group, extensions) in ShellMenu.Groups)
+        {
+            shellPanel.Children.Add(new TextBlock { Text = Loc.T(group), Margin = new Thickness(0, 6, 0, 0), Opacity = 0.8 });
+            var grid = new Grid { ColumnSpacing = 4 };
+            for (int column = 0; column < 4; column++) grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            for (int i = 0; i < extensions.Length; i++)
+            {
+                if (i % 4 == 0) grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                var box = new CheckBox { Content = extensions[i], Tag = extensions[i], IsChecked = enabledTypes.Contains(extensions[i]), MinWidth = 0 };
+                Grid.SetRow(box, i / 4);
+                Grid.SetColumn(box, i % 4);
+                grid.Children.Add(box);
+                typeBoxes.Add(box);
+            }
+            shellPanel.Children.Add(grid);
+        }
+        panel.Children.Add(new Expander
+        {
+            Header = Loc.T("Dosya Gezgini sağ tık menüsü"),
+            Content = shellPanel,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            HorizontalContentAlignment = HorizontalAlignment.Stretch,
+        });
+
         var dialog = Create(root, theme, Loc.T("Ayarlar"), new ScrollViewer { Content = panel, VerticalScrollBarVisibility = ScrollBarVisibility.Auto },
             Loc.T("Kaydet"), Loc.T("Vazgeç"), ContentDialogButton.Primary);
         if (await ShowAsync(dialog) != ContentDialogResult.Primary) return false;
@@ -135,6 +170,7 @@ public static class Dialogs
         settings.WordWrap = wrapSwitch.IsOn;
         settings.ShowStatusBar = statusSwitch.IsOn;
         settings.RestoreSession = sessionSwitch.IsOn;
+        ShellMenu.Save(settings, typeBoxes.Where(b => b.IsChecked == true).Select(b => (string)b.Tag));
         return true;
     }
 

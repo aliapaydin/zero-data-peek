@@ -14,9 +14,11 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
     <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
-    <Version>0.3.0</Version>
+    <Version>0.4.0</Version>
     <!-- Tek örnek: Main, Program.cs içinde (açılan dosyalar çalışan pencereye sekme olarak gider) -->
     <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
+    <!-- ZdpShell yerel bir DLL; hedef platform sürümü karşılaştırması anlamsız -->
+    <MSBuildWarningsAsMessages>$(MSBuildWarningsAsMessages);MSB3851</MSBuildWarningsAsMessages>
   </PropertyGroup>
 
   <ItemGroup>
@@ -24,6 +26,8 @@
     <Content Include="Assets\AppIcon.ico" />
     <!-- Kod düzenleyici (Monaco): yerel dosyalar, WebView2 içinde sanal ana bilgisayardan yüklenir -->
     <Content Include="Assets\monaco\**\*" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Belge düzenleyici sayfası (zengin metin, DOCX okuma ve yazma) -->
+    <Content Include="Assets\docedit\**\*" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
@@ -33,6 +37,20 @@
   <!-- İngilizce arayüz metinleri (anahtar: Türkçe metin) -->
   <ItemGroup>
     <EmbeddedResource Include="Strings\en.json" LogicalName="ZeroDataPeek.Strings.en.json" />
+  </ItemGroup>
+
+  <!--
+    Dosya Gezgini sağ tık menüsü (ZdpShell.dll, C++). Gezgin'in içinde çalıştığı için yerel kod olmak zorunda.
+    Önce o derlenir, çıktısı uygulama paketine eklenir. C++ araçları kurulu değilse:
+    msbuild /p:BuildShellExtension=false (sağ tık menüsü pakete girmez).
+  -->
+  <ItemGroup Condition="'$(BuildShellExtension)'!='false'">
+    <ProjectReference Include="..\ZdpShell\ZdpShell.vcxproj"
+                      ReferenceOutputAssembly="false"
+                      SkipGetTargetFrameworkProperties="true"
+                      UndefineProperties="TargetFramework;RuntimeIdentifier;SelfContained"
+                      Private="false" />
+    <Content Include="..\ZdpShell\bin\$(Platform)\$(Configuration)\ZdpShell.dll" Link="ZdpShell.dll" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(DisableMsixProjectCapabilityAddedByProject)'!='true' and '$(EnableMsixTooling)'=='true'">

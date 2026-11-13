@@ -76,6 +76,9 @@
                     <MenuFlyoutItem Text="Yeni sekme" Tag="New" Click="Command_Click" KeyboardAcceleratorTextOverride="Ctrl+N">
                         <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE710;" /></MenuFlyoutItem.Icon>
                     </MenuFlyoutItem>
+                    <MenuFlyoutItem Text="Yeni belge" Tag="NewDocument" Click="Command_Click" KeyboardAcceleratorTextOverride="Ctrl+Shift+N">
+                        <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8D2;" /></MenuFlyoutItem.Icon>
+                    </MenuFlyoutItem>
                     <MenuFlyoutItem Text="Dosya aç…" Tag="Open" Click="Command_Click" KeyboardAcceleratorTextOverride="Ctrl+O">
                         <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8E5;" /></MenuFlyoutItem.Icon>
                     </MenuFlyoutItem>
@@ -93,6 +96,12 @@
                         <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE792;" /></MenuFlyoutItem.Icon>
                     </MenuFlyoutItem>
                     <MenuFlyoutItem x:Name="MenuSaveAll" Text="Tümünü kaydet" Tag="SaveAll" Click="Command_Click" />
+                    <MenuFlyoutItem x:Name="MenuFileExport" Text="Dışa aktar…" Tag="Export" Click="Command_Click" KeyboardAcceleratorTextOverride="Ctrl+Shift+E">
+                        <MenuFlyoutItem.Icon><FontIcon Glyph="&#xEDE1;" /></MenuFlyoutItem.Icon>
+                    </MenuFlyoutItem>
+                    <MenuFlyoutItem x:Name="MenuPrint" Text="Yazdır…" Tag="Print" Click="Command_Click" KeyboardAcceleratorTextOverride="Ctrl+P">
+                        <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE749;" /></MenuFlyoutItem.Icon>
+                    </MenuFlyoutItem>
                     <MenuFlyoutSeparator />
                     <MenuFlyoutItem x:Name="MenuReveal" Text="Dosya Gezgini'nde göster" Tag="Reveal" Click="Command_Click">
                         <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE838;" /></MenuFlyoutItem.Icon>
@@ -169,6 +178,22 @@
                         <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE71F;" /></MenuFlyoutItem.Icon>
                     </MenuFlyoutItem>
                     <MenuFlyoutItem Text="Yakınlaştırmayı sıfırla" Tag="ZoomReset" Click="Command_Click" KeyboardAcceleratorTextOverride="Ctrl+0" />
+                </MenuBarItem>
+
+                <MenuBarItem Title="Oturum">
+                    <MenuFlyoutItem x:Name="MenuSessionSave" Text="Oturumu kaydet" Tag="SessionSave" Click="Command_Click" KeyboardAcceleratorTextOverride="Ctrl+Alt+S">
+                        <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE74E;" /></MenuFlyoutItem.Icon>
+                    </MenuFlyoutItem>
+                    <MenuFlyoutItem x:Name="MenuSessionSaveAs" Text="Oturumu farklı kaydet…" Tag="SessionSaveAs" Click="Command_Click" />
+                    <MenuFlyoutSeparator />
+                    <MenuFlyoutItem Text="Oturum aç…" Tag="SessionOpen" Click="Command_Click">
+                        <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8E5;" /></MenuFlyoutItem.Icon>
+                    </MenuFlyoutItem>
+                    <MenuFlyoutSubItem x:Name="MenuRecentSessions" Text="Son oturumlar">
+                        <MenuFlyoutSubItem.Icon><FontIcon Glyph="&#xE81C;" /></MenuFlyoutSubItem.Icon>
+                    </MenuFlyoutSubItem>
+                    <MenuFlyoutSeparator />
+                    <MenuFlyoutItem x:Name="MenuSessionClose" Text="Oturumdan ayrıl" Tag="SessionClose" Click="Command_Click" />
                 </MenuBarItem>
 
                 <MenuBarItem Title="Veri">
@@ -313,10 +338,14 @@
                             <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center" Margin="0,8,0,0">
                                 <Button Style="{StaticResource AccentButtonStyle}" Content="Dosya aç…" Tag="Open" Click="Command_Click" />
                                 <Button Content="Yeni sekme" Tag="New" Click="Command_Click" />
+                                <Button Content="Yeni belge" Tag="NewDocument" Click="Command_Click" />
+                                <Button Content="Oturum aç…" Tag="SessionOpen" Click="Command_Click" />
                             </StackPanel>
                             <TextBlock Text="Dosyaları pencereye sürükleyip bırakarak da açabilirsin." HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                             <TextBlock x:Name="RecentHeader" Text="Son açılanlar" Margin="0,12,0,0" Style="{StaticResource BodyStrongTextBlockStyle}" Visibility="Collapsed" />
                             <StackPanel x:Name="RecentPanel" Spacing="0" />
+                            <TextBlock x:Name="SessionHeader" Text="Son oturumlar" Margin="0,12,0,0" Style="{StaticResource BodyStrongTextBlockStyle}" Visibility="Collapsed" />
+                            <StackPanel x:Name="SessionPanel" Spacing="0" />
                         </StackPanel>
                     </ScrollViewer>
                 </Grid>

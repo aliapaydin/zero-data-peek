@@ -52,6 +52,16 @@ jobs:
           if (-not (Test-Path $main)) { throw "Monaco dosyaları eksik: $main" }
           $page.FullName
 
+      - name: Belge düzenleyici ve sağ tık eklentisi çıktıda mı
+        shell: pwsh
+        run: |
+          $doc = Get-ChildItem src/ZeroDataPeek/bin -Recurse -Filter docx.js | Where-Object { $_.FullName -match 'Assets\\docedit' } | Select-Object -First 1
+          if (-not $doc) { throw "Assets/docedit/docx.js uygulama çıktısında yok (${{ matrix.platform }})" }
+          $dll = Get-ChildItem src/ZeroDataPeek/bin -Recurse -Filter ZdpShell.dll | Select-Object -First 1
+          if (-not $dll) { throw "ZdpShell.dll uygulama çıktısında yok (${{ matrix.platform }})" }
+          $doc.FullName
+          $dll.FullName
+
   strings:
     # Arayüzdeki her Türkçe metnin Strings/en.json içinde karşılığı var mı
     runs-on: ubuntu-latest

@@ -40,14 +40,21 @@
 - [ ] Kaydedilmemiş sekmeleri kapanışta saklama
 - [ ] Düzenleyici arayüzünü Türkçeleştirme (bul kutusu, sağ tık menüsü şu an İngilizce)
 
-## v0.4: Belge modu
-- [ ] Zengin metin: yazı tipi, kalın / italik / altı çizili, renk, hizalama, liste, tablo, resim
-- [ ] RTF ve DOCX açma ve kaydetme; PDF ve HTML olarak dışa aktarma
-- [ ] Markdown önizleme
-- [ ] Yazdırma
+## v0.4: Belge modu, oturumlar, sağ tık menüsü
+- [x] Belge düzenleyici: A4 görünümlü zengin metin (WebView2), araç çubuğu: stil, yazı tipi, boyut, kalın / italik / altı çizili / üstü çizili, renk ve vurgu, hizalama, listeler, girinti, bağlantı, resim, tablo
+- [x] Word (DOCX) açma ve kaydetme: paragraf, başlık, liste, tablo, resim, bağlantı ve karakter biçimleri; taşınamayan öğeler (üstbilgi, dipnot, yorum…) için üzerine kaydetmeden önce uyarı
+- [x] PDF, HTML ve düz metin olarak dışa aktarma; yazdırma
+- [x] Adlandırılmış oturumlar: açık sekmeleri `.zdp` dosyasına kaydetme, açma, son oturumlar; `.zdp` çift tıklanınca oturum açılır
+- [x] Dosya Gezgini sağ tık menüsü: "Zero Data Peek ile aç"; hangi türlerde görüneceği Ayarlar'dan seçilir
+- [ ] RTF ve ODT açma; Markdown önizleme
+- [ ] Tabloda satır / sütun ekleme ve silme, hücre birleştirme; resim boyutlandırma tutamaçları
+- [ ] Üstbilgi / altbilgi, sayfa numarası, sayfa kenar boşluğu ayarı
+- [ ] Belge düzenleyicide bul ve değiştir
 
 ## v0.5: .zdp çalışma paketi
-- [ ] Tek dosyada veri anlık görüntüsü, SQL sorguları, filtreler, kolon biçimleri, notlar ve açık sekmeler
-- [ ] `.zdp` dosya ilişkilendirmesi ve simgesi
+- [ ] Oturuma veri sekmelerinin SQL sorgularını, süzgeçlerini ve kolon genişliklerini de kaydetme
+- [ ] Veri anlık görüntüsünü oturum dosyasına gömme (dosyayı başkasına gönderince analiz aynen açılsın)
+- [ ] `.zdp` için ayrı dosya simgesi
 - [ ] Bölünmüş görünüm, dosya karşılaştırma
 - [ ] Zero File Commander ile bütünleşme (önizleme)
+- [ ] Store paketi: DuckDB'nin yalnızca hedef platform kitaplığını paketleme (boyut)

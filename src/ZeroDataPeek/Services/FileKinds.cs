@@ -67,6 +67,7 @@ public static class FileKinds
         if (DocumentFormats.TryGetValue(ext, out var doc)) return doc;
         if (Languages.TryGetValue(ext, out var language)) return language;
         if (ext.Equals(".log", StringComparison.OrdinalIgnoreCase)) return Loc.T("Günlük");
+        if (ext.Equals(SessionFile.Extension, StringComparison.OrdinalIgnoreCase)) return Loc.T("Oturum");
         return Loc.T("Düz metin");
     }
 
@@ -92,8 +93,9 @@ public static class FileKinds
     public static bool CanOpen(string? path)
     {
         if (string.IsNullOrEmpty(path)) return false;
-        if (DataEngine.Supports(path)) return true;
+        if (DataEngine.Supports(path) || SessionFile.IsSession(path)) return true;
         string ext = Extension(path);
+        if (ext.Equals(".docx", StringComparison.OrdinalIgnoreCase)) return true; // belge modu
         if (BinaryFormats.Contains(ext)) return false;
         if (Languages.ContainsKey(ext) || DataFormats.ContainsKey(ext) || DocumentFormats.ContainsKey(ext) || PlainTextExtensions.Contains(ext)) return true;
         try

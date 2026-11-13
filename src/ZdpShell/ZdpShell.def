@@ -1,0 +1,4 @@
+LIBRARY ZdpShell
+EXPORTS
+    DllGetClassObject   PRIVATE
+    DllCanUnloadNow     PRIVATE

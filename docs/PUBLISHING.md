@@ -7,5 +7,6 @@ Zero File Commander ve Zero File Extractor ile aynı adımlar; farklar burada.
 3. **Paketi üret:** GitHub → Actions → **store-package** → Run workflow. Çıkan `.msixupload` dosyasını Partner Center'a yükle.
 4. **Sertifikasyon notları** ("Notes for certification" alanına):
    - `runFullTrust`: masaüstü uygulaması; kullanıcının seçtiği dosyaları okur ve yazar.
+   - Paket bir Dosya Gezgini bağlam menüsü eklentisi içerir (IExplorerCommand, `ZdpShell.dll`, COM vekil sunucusu). Yalnızca seçili dosya yollarını okur ve uygulamaya komut satırıyla iletir; hangi türlerde görüneceğini kullanıcı Ayarlar'dan seçer.
    - Uygulama internete bağlanmaz, veri toplamaz.
 5. **Gizlilik politikası adresi:** depo herkese açık olduğunda `PRIVACY.md` bağlantısı.

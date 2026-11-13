@@ -73,6 +73,8 @@ public sealed partial class MainWindow : Window
         BuildCommands();
         BuildStatusFlyouts();
         InitializeExplorer();
+        ShellMenu.Publish(_settings);
+        RefreshSessions();
 
         AppWindow.Closing += AppWindow_Closing;
         Closed += (_, _) =>
@@ -193,12 +195,18 @@ public sealed partial class MainWindow : Window
         Add("Replace", "Değiştir", "Ctrl+H", () => _active?.Editor?.Replace());
         Add("GoToLine", "Satıra git", "Ctrl+G", () => _active?.Editor?.GoToLine());
         Add("Minimap", "Küçük harita", "", ToggleMinimap);
-        Add("Undo", "Geri al", "Ctrl+Z", () => _active?.Editor?.Undo());
-        Add("Redo", "Yinele", "Ctrl+Y", () => _active?.Editor?.Redo());
+        Add("NewDocument", "Yeni belge", "Ctrl+Shift+N", NewDocument, VirtualKey.N, CtrlShift);
+        Add("Print", "Yazdır…", "Ctrl+P", () => _active?.Doc?.Print(), VirtualKey.P, Ctrl);
+        Add("SessionSave", "Oturumu kaydet", "Ctrl+Alt+S", () => _ = SaveSessionFileAsync(false), VirtualKey.S, Ctrl | VirtualKeyModifiers.Menu);
+        Add("SessionSaveAs", "Oturumu farklı kaydet…", "", () => _ = SaveSessionFileAsync(true));
+        Add("SessionOpen", "Oturum aç…", "", () => _ = PickSessionAsync());
+        Add("SessionClose", "Oturumdan ayrıl", "", () => SetSession(null));
+        Add("Undo", "Geri al", "Ctrl+Z", () => { _active?.Editor?.Undo(); _active?.Doc?.Command("undo"); });
+        Add("Redo", "Yinele", "Ctrl+Y", () => { _active?.Editor?.Redo(); _active?.Doc?.Command("redo"); });
         Add("Cut", "Kes", "Ctrl+X", () => _active?.Editor?.Cut());
         Add("Copy", "Kopyala", "Ctrl+C", () => _active?.Editor?.Copy());
         Add("Paste", "Yapıştır", "Ctrl+V", () => _active?.Editor?.Paste());
-        Add("SelectAll", "Tümünü seç", "Ctrl+A", () => _active?.Editor?.SelectAll());
+        Add("SelectAll", "Tümünü seç", "Ctrl+A", () => { _active?.Editor?.SelectAll(); _active?.Doc?.Command("selectAll"); });
 
         Add("TabsHorizontal", "Sekmeler: üstte (yatay)", "", () => SetVerticalTabs(false));
         Add("TabsVertical", "Sekmeler: solda (dikey)", "", () => SetVerticalTabs(true));
@@ -209,9 +217,9 @@ public sealed partial class MainWindow : Window
         Add("ToggleTheme", "Açık ve koyu tema arasında geç", "", () => SetTheme(Theme == ElementTheme.Dark ? AppTheme.Light : AppTheme.Dark));
         Add("WordWrap", "Sözcük kaydırma", "Alt+Z", ToggleWordWrap, VirtualKey.Z, VirtualKeyModifiers.Menu);
         Add("StatusBar", "Durum çubuğu", "", ToggleStatusBar);
-        Add("ZoomIn", "Yakınlaştır", "Ctrl++", () => _active?.Editor?.ZoomBy(10), OemPlus, Ctrl);
-        Add("ZoomOut", "Uzaklaştır", "Ctrl+-", () => _active?.Editor?.ZoomBy(-10), OemMinus, Ctrl);
-        Add("ZoomReset", "Yakınlaştırmayı sıfırla", "Ctrl+0", () => _active?.Editor?.SetZoom(100), VirtualKey.Number0, Ctrl);
+        Add("ZoomIn", "Yakınlaştır", "Ctrl++", () => ZoomActive(10), OemPlus, Ctrl);
+        Add("ZoomOut", "Uzaklaştır", "Ctrl+-", () => ZoomActive(-10), OemMinus, Ctrl);
+        Add("ZoomReset", "Yakınlaştırmayı sıfırla", "Ctrl+0", () => ZoomActive(0), VirtualKey.Number0, Ctrl);
         AddAccelerator(VirtualKey.Add, Ctrl, "ZoomIn");
         AddAccelerator(VirtualKey.Subtract, Ctrl, "ZoomOut");
         AddAccelerator(VirtualKey.NumberPad0, Ctrl, "ZoomReset");
@@ -219,7 +227,11 @@ public sealed partial class MainWindow : Window
 
         Add("SqlPanel", "SQL paneli", "Ctrl+E", () => _active?.Data?.ToggleSqlPanel(), VirtualKey.E, Ctrl);
         Add("ColumnProfile", "Kolon profili", "Ctrl+Shift+I", () => _active?.Data?.ToggleProfilePanel(), VirtualKey.I, CtrlShift);
-        Add("Export", "Dışa aktar…", "Ctrl+Shift+E", () => { if (_active?.Data is { } data) _ = data.ExportAsync(); }, VirtualKey.E, CtrlShift);
+        Add("Export", "Dışa aktar…", "Ctrl+Shift+E", () =>
+        {
+            if (_active?.Data is { } data) _ = data.ExportAsync();
+            else if (_active is { Doc: { } document } tab) _ = ExportDocumentAsync(tab, document);
+        }, VirtualKey.E, CtrlShift);
         Add("OpenAsText", "Metin olarak aç", "", () => { if (_active?.Data is not null) _ = ReopenAsync(_active, asText: true); });
         Add("OpenAsTable", "Tablo olarak aç", "", () => { if (_active is { Editor: not null } tab && DataEngine.Supports(tab.FilePath)) _ = ReopenAsync(tab, asText: false); });
 
@@ -330,6 +342,7 @@ public sealed partial class MainWindow : Window
         UpdateUi();
         tab.Editor?.FocusEditor();
         tab.Data?.FocusGrid();
+        tab.Doc?.FocusEditor();
     }
 
     private void StepTab(int direction)
@@ -573,6 +586,12 @@ public sealed partial class MainWindow : Window
                 continue;
             }
 
+            if (SessionFile.IsSession(full))
+            {
+                await OpenSessionAsync(full);
+                continue;
+            }
+
             var existing = _tabs.FirstOrDefault(t => string.Equals(t.FilePath, full, StringComparison.OrdinalIgnoreCase));
             if (existing is not null)
             {
@@ -592,7 +611,9 @@ public sealed partial class MainWindow : Window
                 var tab = new DocumentTab(Path.GetFileName(full), full, view);
                 if (view is ITextEditor editor) HookEditor(tab, editor);
                 if (view is DataDocumentView data) HookData(tab, data);
+                if (view is RichDocumentView document) HookDocument(tab, document);
                 AddTab(tab);
+                if (view is RichDocumentView loading) _ = LoadDocumentAsync(tab, loading, full);
                 if (_explorerRoot is null) RevealInExplorer(full);
                 _settings.AddRecent(full);
             }
@@ -612,6 +633,8 @@ public sealed partial class MainWindow : Window
         string format = FileKinds.FormatName(path);
         bool binary = FileKinds.IsBinaryFormat(path);
 
+        if (RichDocumentView.Supports(path)) return CreateDocumentView(); // içerik sekme eklendikten sonra yüklenir
+
         if (DataEngine.Supports(path) && (!asText || binary))
         {
             var data = new DataDocumentView(_hwnd);
@@ -627,7 +650,7 @@ public sealed partial class MainWindow : Window
             return new PlaceholderView(glyph, Loc.F("{0} dosyaları henüz açılamıyor", format),
                 kind == DocumentKind.Data
                     ? Loc.T("Bu veri biçimi henüz desteklenmiyor; yol haritasında sırada.")
-                    : Loc.T("Bu biçim Belge moduyla gelecek."));
+                    : Loc.T("Bu belge biçimi henüz desteklenmiyor; şimdilik yalnızca Word (.docx) belgeleri açılıyor."));
         }
 
         long size = new FileInfo(path).Length;
@@ -700,6 +723,11 @@ public sealed partial class MainWindow : Window
             await data.ExportAsync();
             return;
         }
+        if (_active.Doc is { } document)
+        {
+            await SaveDocumentAsync(_active, document, saveAs);
+            return;
+        }
         await SaveAsync(_active, saveAs);
     }
 
@@ -714,6 +742,7 @@ public sealed partial class MainWindow : Window
     /// <summary>Sekmeyi kaydeder; yolu yoksa ya da <paramref name="saveAs"/> ise yer sorar. Kaydedilemezse false döner.</summary>
     private async Task<bool> SaveAsync(DocumentTab tab, bool saveAs = false)
     {
+        if (tab.Doc is { } document) return await SaveDocumentAsync(tab, document, saveAs);
         if (tab.Editor is not { } editor) return true; // bilgi sayfası: kaydedilecek bir şey yok
 
         string? path = tab.FilePath;
@@ -826,7 +855,11 @@ public sealed partial class MainWindow : Window
     {
         RootGrid.RequestedTheme = ThemeHelper.ToElementTheme(_settings.Theme);
         StatusBar.Visibility = _settings.ShowStatusBar ? Visibility.Visible : Visibility.Collapsed;
-        foreach (var tab in _tabs) tab.Editor?.ApplySettings(_settings);
+        foreach (var tab in _tabs)
+        {
+            tab.Editor?.ApplySettings(_settings);
+            tab.Doc?.ApplySettings(_settings);
+        }
         ApplyTabLayout();
         ApplyExplorerLayout();
         SyncMenuState();
@@ -915,7 +948,8 @@ public sealed partial class MainWindow : Window
     /// <summary>Başlık, karşılama sayfası, menü etkinlikleri ve durum çubuğu.</summary>
     private void UpdateUi()
     {
-        string title = _active is null ? "Zero Data Peek" : _active.DisplayTitle + " - Zero Data Peek";
+        string app = SessionName is { } session ? session + " - Zero Data Peek" : "Zero Data Peek";
+        string title = _active is null ? app : _active.DisplayTitle + " - " + app;
         Title = title;
         TitleText.Text = title;
 
@@ -925,8 +959,14 @@ public sealed partial class MainWindow : Window
         bool hasEditor = _active?.Editor is not null;
         bool hasPath = _active?.FilePath is not null;
         bool hasData = _active?.Data is not null;
-        MenuSave.IsEnabled = hasEditor;
-        MenuSaveAs.IsEnabled = hasEditor || hasData;
+        bool hasDocument = _active?.Doc is not null;
+        MenuSave.IsEnabled = hasEditor || hasDocument;
+        MenuSaveAs.IsEnabled = hasEditor || hasData || hasDocument;
+        MenuFileExport.IsEnabled = hasData || hasDocument;
+        MenuPrint.IsEnabled = hasDocument;
+        MenuSessionSave.IsEnabled = _tabs.Any(t => t.FilePath is not null);
+        MenuSessionSaveAs.IsEnabled = MenuSessionSave.IsEnabled;
+        MenuSessionClose.IsEnabled = _sessionPath is not null;
         MenuSqlPanel.IsEnabled = hasData;
         MenuColumnProfile.IsEnabled = hasData;
         MenuExport.IsEnabled = hasData;
@@ -938,7 +978,7 @@ public sealed partial class MainWindow : Window
         MenuCloseTab.IsEnabled = hasTab;
         MenuCloseOthers.IsEnabled = _tabs.Count > 1;
         MenuCloseAll.IsEnabled = hasTab;
-        MenuEdit.IsEnabled = hasEditor;
+        MenuEdit.IsEnabled = hasEditor || hasDocument;
 
         UpdateStatus();
     }
@@ -947,8 +987,9 @@ public sealed partial class MainWindow : Window
     {
         var editor = _active?.Editor;
         var data = _active?.Data;
+        var document = _active?.Doc;
         var editorVisibility = editor is null ? Visibility.Collapsed : Visibility.Visible;
-        StatusCaret.Visibility = editor is null && data is null ? Visibility.Collapsed : Visibility.Visible;
+        StatusCaret.Visibility = editor is null && data is null && document is null ? Visibility.Collapsed : Visibility.Visible;
         ZoomButton.Visibility = editorVisibility;
         EolButton.Visibility = editorVisibility;
         EncodingButton.Visibility = editorVisibility;
@@ -956,6 +997,12 @@ public sealed partial class MainWindow : Window
         StatusText.Text = _active is null ? Loc.T("Hazır") : _active.FilePath ?? Loc.T("Henüz kaydedilmedi");
         StatusFormat.Text = _active is null ? string.Empty : FileKinds.FormatName(_active.FilePath);
         if (data is not null) StatusCaret.Text = data.StatusText;
+        if (document is not null)
+        {
+            StatusCaret.Text = document.StatusText;
+            ZoomButton.Visibility = Visibility.Visible;
+            ZoomButton.Content = Loc.F("%{0}", document.Zoom);
+        }
         if (editor is null) return;
 
         var caret = editor.GetCaret();

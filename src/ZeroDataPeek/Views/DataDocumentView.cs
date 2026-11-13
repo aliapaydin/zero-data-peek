@@ -324,6 +324,13 @@ public sealed partial class DataDocumentView : Grid
         _csvButton = ToolButton("\uE9E9", "CSV", Loc.T("CSV okuma seçenekleri: ayraç, ondalık, başlık, kodlama"), () => _ = ShowCsvOptionsAsync());
         _csvButton.Visibility = Visibility.Collapsed;
         buttons.Children.Add(_csvButton);
+
+        // Süzgeç düğmesi: koşul ekleme ve etkin süzgeçleri tek tek kaldırma.
+        var filterButton = ToolButton("\uE71C", Loc.T("Süzgeç"), Loc.T("Koşullu süzgeç ekle ya da kaldır (Ctrl+Alt+F)"), () => { });
+        var filterMenu = new MenuFlyout();
+        filterMenu.Opening += (_, _) => FillFilterMenu(filterMenu);
+        filterButton.Flyout = filterMenu;
+        buttons.Children.Insert(0, filterButton);
         SetColumn(buttons, 3);
         bar.Children.Add(buttons);
 
@@ -447,7 +454,9 @@ public sealed partial class DataDocumentView : Grid
         string summary = Loc.F("{0} satır · {1} kolon", Number(current.RowCount), Number(current.Columns.Count));
         if (_query is not null) summary += " · " + Loc.T("sorgu sonucu");
         if (!string.IsNullOrEmpty(_search)) summary += " · " + Loc.F("\"{0}\" araması", _search);
-        if (_filters.Count > 0) summary += " · " + Loc.F("{0} süzgeç", _filters.Count);
+        if (_filters.Count == 1) summary += " · " + Dialogs.Describe(_filters[0]);
+        else if (_filters.Count > 1) summary += " · " + Loc.F("{0} süzgeç", _filters.Count);
+        ToolTipService.SetToolTip(_summaryText, _filters.Count == 0 ? null : string.Join("\n", _filters.Select(Dialogs.Describe)));
         _clearFiltersButton.Visibility = _filters.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         _clearFiltersButton.Content = Loc.F("Süzgeçleri temizle ({0})", _filters.Count);
         _summaryText.Text = summary;
@@ -528,6 +537,8 @@ public sealed partial class DataDocumentView : Grid
             Item(Loc.T("Artan sırala"), "\uE74A", () => SortBy(context.Column, descending: false));
             Item(Loc.T("Azalan sırala"), "\uE74B", () => SortBy(context.Column, descending: true));
             if (_sortColumn >= 0) Item(Loc.T("Sıralamayı kaldır"), "\uE711", () => SortBy(-1, descending: false));
+            menu.Items.Add(new MenuFlyoutSeparator());
+            Item(Loc.T("Koşullu süzgeç…"), "\uE71C", () => _ = ShowFilterDialogAsync(context.Column, null));
         }
         else
         {
@@ -535,6 +546,7 @@ public sealed partial class DataDocumentView : Grid
             string shown = value is null ? "null" : value.Length > 28 ? value[..28] + "…" : value;
             Item(Loc.F("Süz: {0} = {1}", column.Name, shown), "\uE71C", () => AddFilter(new DataFilter(column.Name, value, false)));
             Item(Loc.F("Hariç tut: {0} ≠ {1}", column.Name, shown), "\uE711", () => AddFilter(new DataFilter(column.Name, value, true)));
+            Item(Loc.T("Koşullu süzgeç…"), "\uE71C", () => _ = ShowFilterDialogAsync(context.Column, value));
             menu.Items.Add(new MenuFlyoutSeparator());
             Item(Loc.T("Hücreyi kopyala"), "\uE8C8", () => _grid.CopySelection(wholeRow: false));
             Item(Loc.T("Satırı kopyala"), "\uE8C8", () => _grid.CopySelection(wholeRow: true));
@@ -560,6 +572,46 @@ public sealed partial class DataDocumentView : Grid
         _filters.Add(filter);
         _ = ApplyViewAsync();
     }
+
+    private void FillFilterMenu(MenuFlyout menu)
+    {
+        menu.Items.Clear();
+        var add = new MenuFlyoutItem { Text = Loc.T("Koşul ekle…"), Icon = new FontIcon { Glyph = "\uE710" } };
+        add.Click += (_, _) => _ = ShowFilterDialogAsync(_grid.CurrentColumn, null);
+        menu.Items.Add(add);
+        if (_filters.Count == 0) return;
+
+        menu.Items.Add(new MenuFlyoutSeparator());
+        foreach (var filter in _filters.ToList())
+        {
+            var item = new MenuFlyoutItem { Text = Loc.F("Kaldır: {0}", Dialogs.Describe(filter)), Icon = new FontIcon { Glyph = "\uE711" } };
+            item.Click += (_, _) =>
+            {
+                _filters.Remove(filter);
+                _ = ApplyViewAsync();
+            };
+            menu.Items.Add(item);
+        }
+        menu.Items.Add(new MenuFlyoutSeparator());
+        var clear = new MenuFlyoutItem { Text = Loc.T("Tüm süzgeçleri kaldır") };
+        clear.Click += (_, _) =>
+        {
+            _filters.Clear();
+            _ = ApplyViewAsync();
+        };
+        menu.Items.Add(clear);
+    }
+
+    /// <summary>Koşullu süzgeç diyaloğunu açar (menüden, sağ tıktan ya da kısayolla).</summary>
+    public async Task ShowFilterDialogAsync(int column, string? value)
+    {
+        var source = _query ?? _base;
+        if (_busy || source is null || XamlRoot is null) return;
+        var filter = await Dialogs.FilterAsync(XamlRoot, ActualTheme, source.Columns, Math.Max(0, column), value);
+        if (filter is not null) AddFilter(filter);
+    }
+
+    public void ShowFilterDialog() => _ = ShowFilterDialogAsync(_grid.CurrentColumn, null);
 
     private async Task DropViewAsync()
     {

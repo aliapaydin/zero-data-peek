@@ -427,6 +427,106 @@ public static class Dialogs
             textSwitch.IsOn);
     }
 
+    /// <summary>Koşullu süzgeç: kolon, koşul ve değer. Vazgeçilirse null döner.</summary>
+    public static async Task<DataFilter?> FilterAsync(XamlRoot root, ElementTheme theme, IReadOnlyList<DataColumn> columns, int column, string? value)
+    {
+        if (columns.Count == 0) return null;
+        var columnBox = Combo(columns.Select(c => c.Name), column);
+        columnBox.MinWidth = 260;
+
+        // (ad, koşul, tersine mi, kaç değer ister)
+        var choices = new (string Label, FilterOp Op, bool Exclude, int Values)[]
+        {
+            (Loc.T("eşittir"), FilterOp.Equals, false, 1),
+            (Loc.T("eşit değildir"), FilterOp.Equals, true, 1),
+            (Loc.T("içerir"), FilterOp.Contains, false, 1),
+            (Loc.T("içermez"), FilterOp.Contains, true, 1),
+            (Loc.T("ile başlar"), FilterOp.StartsWith, false, 1),
+            (Loc.T("ile biter"), FilterOp.EndsWith, false, 1),
+            (Loc.T("büyüktür (>)"), FilterOp.Greater, false, 1),
+            (Loc.T("büyük ya da eşittir (≥)"), FilterOp.GreaterOrEqual, false, 1),
+            (Loc.T("küçüktür (<)"), FilterOp.Less, false, 1),
+            (Loc.T("küçük ya da eşittir (≤)"), FilterOp.LessOrEqual, false, 1),
+            (Loc.T("arasındadır"), FilterOp.Between, false, 2),
+            (Loc.T("boştur"), FilterOp.Empty, false, 0),
+            (Loc.T("boş değildir"), FilterOp.Empty, true, 0),
+        };
+        bool numeric = columns[Math.Clamp(column, 0, columns.Count - 1)].IsNumeric;
+        var opBox = Combo(choices.Select(c => c.Label), numeric ? 6 : 2);
+        opBox.MinWidth = 260;
+
+        var valueBox = new TextBox { Text = value ?? string.Empty, MinWidth = 260, IsSpellCheckEnabled = false };
+        var secondBox = new TextBox { MinWidth = 260, IsSpellCheckEnabled = false, PlaceholderText = Loc.T("üst sınır") };
+        var valueCard = Card(Loc.T("Değer"), Loc.T("Büyük / küçük harf ayrımı yapılmaz. Tarihleri 2026-01-31 biçiminde yaz."), valueBox);
+        var secondCard = Card(Loc.T("İkinci değer"), null, secondBox);
+
+        void Sync()
+        {
+            int values = choices[Math.Max(0, opBox.SelectedIndex)].Values;
+            valueCard.Visibility = values >= 1 ? Visibility.Visible : Visibility.Collapsed;
+            secondCard.Visibility = values >= 2 ? Visibility.Visible : Visibility.Collapsed;
+            valueBox.PlaceholderText = values >= 2 ? Loc.T("alt sınır") : string.Empty;
+        }
+        opBox.SelectionChanged += (_, _) => Sync();
+        Sync();
+
+        var panel = Section(Card(Loc.T("Kolon"), null, columnBox), Card(Loc.T("Koşul"), null, opBox), valueCard, secondCard);
+        panel.Width = 520;
+        var dialog = Create(root, theme, Loc.T("Süzgeç ekle"), panel, Loc.T("Süz"), Loc.T("Vazgeç"), ContentDialogButton.Primary);
+        Widen(dialog, 620);
+        valueBox.Loaded += (_, _) => valueBox.Focus(FocusState.Programmatic);
+        if (await ShowAsync(dialog) != ContentDialogResult.Primary) return null;
+
+        var choice = choices[Math.Max(0, opBox.SelectedIndex)];
+        string name = columns[Math.Clamp(columnBox.SelectedIndex, 0, columns.Count - 1)].Name;
+        string first = valueBox.Text.Trim(), second = secondBox.Text.Trim();
+        if (choice.Values >= 1 && first.Length == 0) return null;
+        if (choice.Values >= 2 && second.Length == 0) return null;
+        return new DataFilter(name, choice.Values == 0 ? null : first, choice.Exclude, choice.Op, choice.Values == 2 ? second : null);
+    }
+
+    /// <summary>Karşılaştırılacak iki tarafı seçtirir (açık metin sekmeleri ve "Dosya seç…"). Vazgeçilirse null döner.</summary>
+    public static async Task<(int Left, int Right)?> CompareAsync(XamlRoot root, ElementTheme theme, IReadOnlyList<string> names, int left, int right)
+    {
+        var leftBox = Combo(names, left);
+        var rightBox = Combo(names, right);
+        leftBox.MinWidth = rightBox.MinWidth = 280;
+        var panel = Section(
+            Card(Loc.T("Sol (özgün)"), null, leftBox),
+            Card(Loc.T("Sağ (değişmiş)"), null, rightBox));
+        panel.Children.Add(new TextBlock
+        {
+            Text = Loc.T("Açık sekmeler o anki içerikleriyle (kaydedilmemiş değişiklikler dahil) karşılaştırılır. Karşılaştırma salt okunurdur."),
+            TextWrapping = TextWrapping.Wrap,
+            Opacity = 0.7,
+            FontSize = 12,
+        });
+        panel.Width = 520;
+        var dialog = Create(root, theme, Loc.T("Dosyaları karşılaştır"), panel, Loc.T("Karşılaştır"), Loc.T("Vazgeç"), ContentDialogButton.Primary);
+        Widen(dialog, 620);
+        if (await ShowAsync(dialog) != ContentDialogResult.Primary) return null;
+        return (Math.Max(0, leftBox.SelectedIndex), Math.Max(0, rightBox.SelectedIndex));
+    }
+
+    /// <summary>Süzgecin kısa, okunur hali: "tutar > 100".</summary>
+    public static string Describe(DataFilter filter)
+    {
+        string value = filter.Value is null ? "null" : filter.Value.Length > 24 ? filter.Value[..24] + "…" : filter.Value;
+        return filter.Op switch
+        {
+            FilterOp.Contains => filter.Exclude ? Loc.F("{0} içermez: {1}", filter.Column, value) : Loc.F("{0} içerir: {1}", filter.Column, value),
+            FilterOp.StartsWith => Loc.F("{0} ile başlar: {1}", filter.Column, value),
+            FilterOp.EndsWith => Loc.F("{0} ile biter: {1}", filter.Column, value),
+            FilterOp.Greater => $"{filter.Column} > {value}",
+            FilterOp.GreaterOrEqual => $"{filter.Column} ≥ {value}",
+            FilterOp.Less => $"{filter.Column} < {value}",
+            FilterOp.LessOrEqual => $"{filter.Column} ≤ {value}",
+            FilterOp.Between => $"{value} ≤ {filter.Column} ≤ {filter.Value2}",
+            FilterOp.Empty => filter.Exclude ? Loc.F("{0}: boş değil", filter.Column) : Loc.F("{0}: boş", filter.Column),
+            _ => filter.Exclude ? $"{filter.Column} ≠ {value}" : $"{filter.Column} = {value}",
+        };
+    }
+
     private static ComboBox Combo(IEnumerable<string> items, int selected)
     {
         var box = new ComboBox { MinWidth = 200 };

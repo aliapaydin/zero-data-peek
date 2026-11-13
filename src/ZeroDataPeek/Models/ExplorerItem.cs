@@ -8,6 +8,7 @@ namespace ZeroDataPeek.Models;
 public sealed partial class ExplorerItem : INotifyPropertyChanged
 {
     private bool _isExpanded;
+    private bool _isActive;
 
     public ExplorerItem(string path, bool isFolder, int depth)
     {
@@ -40,8 +41,26 @@ public sealed partial class ExplorerItem : INotifyPropertyChanged
         }
     }
 
+    /// <summary>Etkin sekmenin dosyası mı (ağaçta kalın gösterilir).</summary>
+    public bool IsActive
+    {
+        get => _isActive;
+        set
+        {
+            if (_isActive == value) return;
+            _isActive = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(string.Empty));
+        }
+    }
+
+    public Windows.UI.Text.FontWeight NameWeight => _isActive ? Microsoft.UI.Text.FontWeights.SemiBold : Microsoft.UI.Text.FontWeights.Normal;
+
+    public double RowHeight => Density.ExplorerRow;
+    public double FontSize => Density.ListFont;
+    public double IconSize => Density.ListIcon;
+
     /// <summary>Derinliğe göre soldan girinti.</summary>
-    public Thickness Indent => new(Depth * 14, 0, 0, 0);
+    public Thickness Indent => new(Depth * (Density.Compact ? 11 : 14), 0, 0, 0);
 
     /// <summary>Klasörlerde açma oku; dosyalarda boş.</summary>
     public string Chevron => !IsFolder ? string.Empty : _isExpanded ? "" : "";

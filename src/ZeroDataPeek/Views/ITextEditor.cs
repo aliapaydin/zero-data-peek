@@ -52,5 +52,14 @@ public interface ITextEditor
     void Replace();
     void GoToLine();
 
+    /// <summary>Belgeyi dile göre biçimlendirir (SQL, JSON, XML…). Dönen değer: "ok", "unsupported" ya da "error: …".</summary>
+    Task<string> FormatAsync();
+
+    /// <summary>Markdown önizlemeyi açar ya da kapatır.</summary>
+    void TogglePreview();
+
+    /// <summary>İmleci verilen satıra götürür ve satırı görünür yapar.</summary>
+    void Reveal(int line);
+
     CaretInfo GetCaret();
 }

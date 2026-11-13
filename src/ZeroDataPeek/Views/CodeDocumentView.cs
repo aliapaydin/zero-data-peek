@@ -240,7 +240,7 @@ public sealed partial class CodeDocumentView : Grid, ITextEditor
     private void SendOptions()
     {
         if (!_ready || _fallback is not null) return;
-        double size = Math.Clamp(_settings?.FontSize ?? AppSettings.DefaultFontSize, 8, 48) * _zoom / 100.0;
+        double size = Math.Clamp(_settings?.FontSize ?? AppSettings.DefaultFontSize, 8, 48) * Density.EditorScale * _zoom / 100.0;
         Post(new
         {
             type = "options",
@@ -249,6 +249,7 @@ public sealed partial class CodeDocumentView : Grid, ITextEditor
             fontSize = Math.Max(6, Math.Round(size, 1)),
             wordWrap = _settings?.WordWrap ?? false,
             minimap = _settings?.ShowMinimap ?? true,
+            compact = Density.Compact,
         });
     }
 
@@ -288,6 +289,30 @@ public sealed partial class CodeDocumentView : Grid, ITextEditor
     public void Replace() => Command("replace");
 
     public void GoToLine() => Command("gotoLine");
+
+    public async Task<string> FormatAsync()
+    {
+        if (_fallback is not null || !_ready) return "unsupported";
+        try
+        {
+            string json = await _web.ExecuteScriptAsync("zdp.format()");
+            return JsonSerializer.Deserialize<string>(json) ?? "unsupported";
+        }
+        catch (Exception ex)
+        {
+            return "error: " + ex.Message;
+        }
+    }
+
+    public void TogglePreview()
+    {
+        if (_ready && _fallback is null) Run("zdp.preview()");
+    }
+
+    public void Reveal(int line)
+    {
+        if (_ready && _fallback is null) Run("zdp.reveal(" + line.ToString(System.Globalization.CultureInfo.InvariantCulture) + ", 1)");
+    }
 
     public void Copy()
     {

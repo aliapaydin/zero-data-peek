@@ -15,7 +15,8 @@ public sealed record DataColumn(string Name, string Type)
         "FLOAT", "DOUBLE", "DECIMAL",
     };
 
-    public bool IsNumeric => NumericPrefixes.Any(p => Type.StartsWith(p, StringComparison.OrdinalIgnoreCase));
+    /// <summary>Sayısal tür mü (liste ve dizi türleri, ör. INTEGER[], sayısal sayılmaz).</summary>
+    public bool IsNumeric => !Type.Contains('[') && NumericPrefixes.Any(p => Type.StartsWith(p, StringComparison.OrdinalIgnoreCase));
 }
 
 /// <summary>Veritabanındaki bir tablo ya da görünüm: dosyanın kendisi, bir sorgu sonucu ya da sıralanmış/süzülmüş hali.</summary>
@@ -26,6 +27,15 @@ public sealed record DataRelation(string Name, bool IsTable, IReadOnlyList<DataC
 /// Excel dosyalarında <see cref="Sheets"/> sayfa adlarını, <see cref="Sheet"/> açılan sayfanın sırasını verir.
 /// </summary>
 public sealed record OpenedData(DataRelation Relation, string? Note, IReadOnlyList<string> Sheets, int Sheet);
+
+/// <summary>
+/// CSV okuma seçenekleri (kullanıcı otomatik algılamayı beğenmediğinde). Boş değer "otomatik" demektir.
+/// Delimiter: "," ";" "\t" "|" · Decimal: "." ya da "," · Header: 0 otomatik, 1 var, 2 yok · Encoding: "utf-8", "utf-16", "ansi".
+/// </summary>
+public sealed record CsvOptions(string Delimiter = "", string Decimal = "", int Header = 0, string Encoding = "", bool AllText = false)
+{
+    public bool IsDefault => Delimiter.Length == 0 && Decimal.Length == 0 && Header == 0 && Encoding.Length == 0 && !AllText;
+}
 
 /// <summary>Tek kolona uygulanan değer süzgeci: değere eşit olanlar ya da (Exclude) olmayanlar. Value null ise boş (NULL) değerler.</summary>
 public sealed record DataFilter(string Column, string? Value, bool Exclude);
@@ -106,7 +116,7 @@ public sealed class DataEngine : IDisposable
     /// <summary>
     /// Dosyayı veritabanına alır. <paramref name="existingName"/> verilirse (Excel'de sayfa değiştirirken) aynı tablo adı yeniden kullanılır.
     /// </summary>
-    public Task<OpenedData> OpenFileAsync(string path, int sheet = 0, string? existingName = null) => RunAsync(connection =>
+    public Task<OpenedData> OpenFileAsync(string path, int sheet = 0, string? existingName = null, CsvOptions? csv = null) => RunAsync(connection =>
     {
         string name = existingName ?? ReserveName(path);
         try
@@ -133,7 +143,9 @@ public sealed class DataEngine : IDisposable
             }
             else
             {
-                note = ImportCsv(connection, name, path, sniff: true);
+                note = csv is null || csv.IsDefault
+                    ? ImportCsv(connection, name, path, sniff: true)
+                    : ImportCsvWithOptions(connection, name, path, csv);
             }
 
             return new OpenedData(Describe(connection, name, isTable), note, sheets, sheet);
@@ -257,6 +269,39 @@ public sealed class DataEngine : IDisposable
             string lenient = Loc.T("Dosya düzensiz olduğu için tüm kolonlar metin olarak alındı; okunamayan satırlar atlanmış olabilir.");
             return note is null ? lenient : note + " " + lenient;
         }
+    }
+
+    /// <summary>CSV'yi kullanıcının verdiği seçeneklerle okur; verilmeyenler DuckDB'nin algılamasına kalır.</summary>
+    private string? ImportCsvWithOptions(DbConnection connection, string name, string path, CsvOptions csv)
+    {
+        string source = path;
+        string? note = null;
+        var options = new StringBuilder();
+
+        string encoding = csv.Encoding;
+        if (encoding.Length == 0)
+        {
+            var sniffed = SniffEncoding(path);
+            encoding = sniffed == SniffedEncoding.Utf16 ? "utf-16" : sniffed == SniffedEncoding.Ansi ? "ansi" : "utf-8";
+        }
+        if (encoding == "utf-16")
+        {
+            options.Append(", encoding='utf-16'");
+        }
+        else if (encoding == "ansi")
+        {
+            source = TranscodeToUtf8(path, out string encodingName);
+            note = Loc.F("Dosya {0} kodlamasından UTF-8'e çevrilerek okundu.", encodingName);
+        }
+
+        if (csv.Delimiter.Length > 0) options.Append(", delim=").Append(Literal(csv.Delimiter));
+        if (csv.Decimal == ",") options.Append(", decimal_separator=','");
+        if (csv.Header == 1) options.Append(", header=true");
+        else if (csv.Header == 2) options.Append(", header=false");
+        if (csv.AllText) options.Append(", all_varchar=true");
+
+        Execute(connection, $"CREATE OR REPLACE TABLE {Quote(name)} AS SELECT * FROM read_csv({Literal(source)}{options})");
+        return note;
     }
 
     private static string? SniffDelimiter(DbConnection connection, string path, string options)
@@ -464,6 +509,112 @@ public sealed class DataEngine : IDisposable
         Execute(connection, $"COPY (SELECT * FROM {Quote(relation.Name)}) TO {Literal(path)} ({options})");
         return true;
     });
+
+    /// <summary>
+    /// Veriyi Excel dosyasına yazar. Sayılar sayı, tarihler tarih, diğer her şey metin olur.
+    /// Excel 15 basamaktan uzun tamsayıları yuvarladığı için öyle kolonlar (ör. uzun kimlikler) metin yazılır.
+    /// Dönen değer yazılan veri satırı sayısı ve sayfa sınırı aşıldığı için verinin kesilip kesilmediğidir.
+    /// </summary>
+    public Task<(long Rows, bool Truncated)> ExportXlsxAsync(DataRelation relation, string path) => RunAsync(connection =>
+    {
+        // Her kolon için: 0 metin, 1 sayı, 2 tarih, 3 tarih + saat, 4 mantıksal
+        var kinds = new int[relation.Columns.Count];
+        var select = new List<string>();
+        for (int i = 0; i < relation.Columns.Count; i++)
+        {
+            var column = relation.Columns[i];
+            string c = Quote(column.Name), type = column.Type.ToUpperInvariant();
+            if (column.IsNumeric)
+            {
+                bool wide = type.StartsWith("BIGINT") || type.StartsWith("UBIGINT") || type.StartsWith("HUGEINT") || type.StartsWith("UHUGEINT") || type.StartsWith("DECIMAL");
+                if (wide && ExceedsExcelPrecision(connection, relation.Name, column.Name))
+                {
+                    select.Add($"CAST({c} AS VARCHAR)");
+                }
+                else
+                {
+                    kinds[i] = 1;
+                    select.Add($"CAST({c} AS DOUBLE)");
+                }
+            }
+            else if (type == "DATE")
+            {
+                kinds[i] = 2;
+                select.Add($"strftime({c}, '%Y-%m-%d')");
+            }
+            else if (type is "TIMESTAMP" or "TIMESTAMP_S" or "TIMESTAMP_MS" or "TIMESTAMP_NS" or "DATETIME")
+            {
+                kinds[i] = 3;
+                select.Add($"strftime({c}, '%Y-%m-%d %H:%M:%S')");
+            }
+            else if (type == "BOOLEAN")
+            {
+                kinds[i] = 4;
+                select.Add($"CAST({c} AS VARCHAR)");
+            }
+            else
+            {
+                select.Add($"CAST({c} AS VARCHAR)");
+            }
+        }
+
+        long rows = 0;
+        bool truncated = false;
+        using (var writer = new XlsxWriter(path, relation.Name.StartsWith("__zdp_", StringComparison.Ordinal) ? "Veri" : relation.Name))
+        {
+            writer.WriteHeader(relation.Columns.Select(col => col.Name).ToList());
+            if (select.Count > 0)
+            {
+                using var command = connection.CreateCommand();
+                command.CommandText = $"SELECT {string.Join(", ", select)} FROM {Quote(relation.Name)}" + (relation.IsTable ? " ORDER BY rowid" : string.Empty);
+                using var reader = command.ExecuteReader();
+                var values = new object?[select.Count];
+                while (reader.Read())
+                {
+                    for (int i = 0; i < values.Length; i++)
+                    {
+                        if (reader.IsDBNull(i))
+                        {
+                            values[i] = null;
+                            continue;
+                        }
+                        object raw = reader.GetValue(i);
+                        string text = Convert.ToString(raw, CultureInfo.InvariantCulture) ?? string.Empty;
+                        values[i] = kinds[i] switch
+                        {
+                            1 => raw is double number ? number : double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out double parsed) ? parsed : text,
+                            2 => DateTime.TryParseExact(text, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var date) ? date : text,
+                            3 => DateTime.TryParseExact(text, "yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture, DateTimeStyles.None, out var stamp) ? stamp : text,
+                            4 => text == "true" ? true : text == "false" ? false : text,
+                            _ => text,
+                        };
+                    }
+                    if (!writer.WriteRow(values))
+                    {
+                        truncated = true;
+                        break;
+                    }
+                    rows++;
+                }
+            }
+        }
+        return (rows, truncated);
+    });
+
+    /// <summary>Kolonda Excel'in tam gösteremeyeceği kadar büyük (15 basamaktan uzun) değer var mı.</summary>
+    private static bool ExceedsExcelPrecision(DbConnection connection, string relation, string column)
+    {
+        try
+        {
+            using var command = connection.CreateCommand();
+            command.CommandText = $"SELECT COALESCE(MAX(ABS(CAST({Quote(column)} AS DOUBLE))), 0) >= 1e15 FROM {Quote(relation)}";
+            return Convert.ToBoolean(command.ExecuteScalar(), CultureInfo.InvariantCulture);
+        }
+        catch (Exception)
+        {
+            return true; // emin olunamıyorsa metin yaz: değer bozulmasın
+        }
+    }
 
     /// <summary>Tabloyu ya da görünümü siler; dosyanın kendi tablosuysa adını da serbest bırakır.</summary>
     public Task DropAsync(DataRelation relation) => RunAsync(connection =>

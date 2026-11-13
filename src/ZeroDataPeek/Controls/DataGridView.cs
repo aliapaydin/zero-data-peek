@@ -26,7 +26,7 @@ public sealed record GridContext(bool IsHeader, int Column, Point Position);
 /// </summary>
 public sealed partial class DataGridView : UserControl
 {
-    private const double RowHeight = 28, HeaderHeight = 34, CellPadding = 10;
+    private double RowHeight = Density.GridRow, HeaderHeight = Density.GridHeader, CellPadding = Density.GridCellPadding, FontSizeCell = Density.GridFont;
     private const double MinColumnWidth = 48, MaxAutoWidth = 420, DefaultWidth = 130;
     private const int BlockSize = 200, MaxBlocks = 80, MaxDrawnRows = 300;
 
@@ -192,6 +192,22 @@ public sealed partial class DataGridView : UserControl
         CurrentCellChanged?.Invoke(this, EventArgs.Empty);
     }
 
+    /// <summary>Satır yüksekliği, yazı boyutu ve boşlukları geçerli yoğunluğa (normal / kompakt) göre yeniler.</summary>
+    public void ApplyDensity()
+    {
+        RowHeight = Density.GridRow;
+        HeaderHeight = Density.GridHeader;
+        CellPadding = Density.GridCellPadding;
+        FontSizeCell = Density.GridFont;
+        _headerBack.Height = HeaderHeight;
+        _rowHighlight.Height = RowHeight;
+        _cellOutline.Height = RowHeight;
+        foreach (var block in _cellPool) block.FontSize = FontSizeCell;
+        foreach (var block in _headerPool) block.FontSize = FontSizeCell;
+        foreach (var block in _gutterPool) block.FontSize = FontSizeCell - 1;
+        Render();
+    }
+
     /// <summary>Başlıkta sıralama okunu gösterir (-1: sıralama yok).</summary>
     public void SetSort(int column, bool descending)
     {
@@ -256,9 +272,9 @@ public sealed partial class DataGridView : UserControl
                 number.Width = gutterWidth - 12;
                 number.TextAlignment = TextAlignment.Right;
                 number.Opacity = row == _selectedRow ? 1 : 0.5;
-                number.FontSize = 12;
+                number.FontSize = FontSizeCell - 1;
                 Canvas.SetLeft(number, 0);
-                Canvas.SetTop(number, y + 6);
+                Canvas.SetTop(number, y + TextTop(RowHeight, FontSizeCell - 1));
 
                 var line = NextRectangle(_rowLinePool, ref rowLines, _lineLayer);
                 line.Width = viewWidth;
@@ -293,7 +309,8 @@ public sealed partial class DataGridView : UserControl
                 header.Width = textWidth;
                 header.TextAlignment = numeric ? TextAlignment.Right : TextAlignment.Left;
                 Canvas.SetLeft(header, x + CellPadding);
-                Canvas.SetTop(header, 8);
+                Canvas.SetTop(header, TextTop(HeaderHeight, FontSizeCell));
+                header.FontSize = FontSizeCell;
 
                 var separator = NextRectangle(_separatorPool, ref separators, _scrollLayer);
                 separator.Width = 1;
@@ -326,7 +343,8 @@ public sealed partial class DataGridView : UserControl
                     cell.Width = textWidth;
                     cell.TextAlignment = numeric ? TextAlignment.Right : TextAlignment.Left;
                     Canvas.SetLeft(cell, x + CellPadding);
-                    Canvas.SetTop(cell, HeaderHeight + r * RowHeight + 5);
+                    Canvas.SetTop(cell, HeaderHeight + r * RowHeight + TextTop(RowHeight, FontSizeCell));
+                    cell.FontSize = FontSizeCell;
                 }
 
                 if (c == _selectedColumn && _selectedRow >= _firstRow && _selectedRow < _firstRow + drawRows)
@@ -354,6 +372,9 @@ public sealed partial class DataGridView : UserControl
             _rendering = false;
         }
     }
+
+    /// <summary>Metni satırın dikey ortasına koyan üst boşluk.</summary>
+    private static double TextTop(double rowHeight, double fontSize) => Math.Max(0, Math.Round((rowHeight - fontSize * 1.36) / 2));
 
     private static TextBlock NextText(List<TextBlock> pool, ref int used, Canvas layer)
     {

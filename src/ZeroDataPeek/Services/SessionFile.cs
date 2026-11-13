@@ -11,6 +11,11 @@ public sealed class SessionTab
 
     [JsonPropertyName("mode")]
     public string Mode { get; set; } = "text";
+
+    /// <summary>Veri sekmesinin SQL panelindeki sorgu (varsa).</summary>
+    [JsonPropertyName("sql")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Sql { get; set; }
 }
 
 /// <summary>

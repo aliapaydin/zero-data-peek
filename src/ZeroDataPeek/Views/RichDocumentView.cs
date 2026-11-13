@@ -303,6 +303,7 @@ public sealed partial class RichDocumentView : Grid
             type = "options",
             theme = ActualTheme == ElementTheme.Dark ? "dark" : "light",
             zoom = _zoom,
+            compact = Density.Compact,
             lang = Loc.IsEnglish ? "en" : "tr",
         });
     }

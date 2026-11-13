@@ -109,9 +109,11 @@ public sealed partial class MainWindow
         view.ClearLosses();
         tab.FilePath = Path.GetFullPath(path);
         tab.IsDirty = false;
+        tab.TouchDiskStamp();
         _settings.AddRecent(tab.FilePath!);
         RefreshRecent();
         UpdateUi();
+        Notify(Loc.F("Kaydedildi: {0}", tab.Title));
         return true;
     }
 
@@ -123,7 +125,7 @@ public sealed partial class MainWindow
         try
         {
             await view.SaveAsync(path);
-            StatusText.Text = Loc.F("Dışa aktarıldı: {0}", path);
+            Notify(Loc.F("Dışa aktarıldı: {0}", path));
         }
         catch (Exception ex)
         {

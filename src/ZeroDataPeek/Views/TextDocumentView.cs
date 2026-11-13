@@ -135,6 +135,16 @@ public sealed partial class TextDocumentView : Grid, ITextEditor
     {
     }
 
+    public Task<string> FormatAsync() => Task.FromResult("unsupported");
+
+    public void TogglePreview()
+    {
+    }
+
+    public void Reveal(int line)
+    {
+    }
+
     public void ApplySettings(AppSettings settings)
     {
         _box.TextWrapping = settings.WordWrap ? TextWrapping.Wrap : TextWrapping.NoWrap;
@@ -147,7 +157,7 @@ public sealed partial class TextDocumentView : Grid, ITextEditor
         {
             _box.FontFamily = new FontFamily("Consolas");
         }
-        _baseFontSize = Math.Clamp(settings.FontSize, 8, 48);
+        _baseFontSize = Math.Clamp(settings.FontSize, 8, 48) * Density.EditorScale;
         ApplyZoom();
     }
 

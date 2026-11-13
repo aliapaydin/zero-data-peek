@@ -14,7 +14,7 @@
   <Identity
     Name="AliApaydin.ZeroDataPeek"
     Publisher="CN=BA57EB18-640B-433D-88C6-EB1D10E9A905"
-    Version="0.4.0.0" />
+    Version="0.5.0.0" />
 
   <Properties>
     <DisplayName>Zero Data Peek</DisplayName>

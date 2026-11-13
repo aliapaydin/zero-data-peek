@@ -30,6 +30,9 @@ public sealed partial class DataDocumentView : Grid
     private readonly ComboBox _sheetBox = new() { Visibility = Visibility.Collapsed, MinWidth = 120 };
     private readonly List<DataFilter> _filters = new();
     private Button? _textButton;
+    private Button? _csvButton;
+    private Grid? _toolbar;
+    private CsvOptions _csvOptions = new();
     private string _path = string.Empty;
     private bool _settingSheet;
     private readonly InfoBar _info = new() { IsOpen = false, IsClosable = true };
@@ -101,6 +104,9 @@ public sealed partial class DataDocumentView : Grid
     /// <summary>Durum çubuğu metni değişti.</summary>
     public event EventHandler? StatusChanged;
 
+    /// <summary>Rahatsız etmeden gösterilecek bir bilgi (ör. dışa aktarma tamamlandı).</summary>
+    public event EventHandler<string>? Notified;
+
     /// <summary>Kullanıcı dosyayı ham metin olarak açmak istedi.</summary>
     public event EventHandler? OpenAsTextRequested;
 
@@ -108,6 +114,21 @@ public sealed partial class DataDocumentView : Grid
     public string? LoadError { get; private set; }
 
     private DataRelation? Current => _view ?? _query ?? _base;
+
+    /// <summary>SQL panelindeki metin (oturum dosyasına kaydedilir).</summary>
+    public string SqlText
+    {
+        get => _sqlBox.Text;
+        set => _sqlBox.Text = value ?? string.Empty;
+    }
+
+    /// <summary>Yoğunluk (normal / kompakt) değişince tabloyu ve araç çubuğunu yeniler.</summary>
+    public void ApplySettings(AppSettings settings)
+    {
+        _grid.ApplyDensity();
+        if (_toolbar is not null) _toolbar.Padding = Density.Compact ? new Thickness(8, 2, 6, 2) : new Thickness(12, 6, 8, 6);
+        _info.Margin = Density.Compact ? new Thickness(4, 0, 4, 2) : new Thickness(8, 0, 8, 6);
+    }
 
     /// <summary>Durum çubuğunda gösterilen konum bilgisi.</summary>
     public string StatusText
@@ -129,6 +150,11 @@ public sealed partial class DataDocumentView : Grid
     {
         _path = path;
         if (_textButton is not null) _textButton.Visibility = FileKinds.IsBinaryFormat(path) ? Visibility.Collapsed : Visibility.Visible;
+        if (_csvButton is not null)
+        {
+            string extension = Path.GetExtension(path).ToLowerInvariant();
+            _csvButton.Visibility = extension is ".csv" or ".tsv" or ".tab" ? Visibility.Visible : Visibility.Collapsed;
+        }
         SetBusy(true);
         try
         {
@@ -196,7 +222,7 @@ public sealed partial class DataDocumentView : Grid
             ResetView();
             await DropViewAsync();
             if (query is not null) await _engine.DropAsync(query);
-            var opened = await _engine.OpenFileAsync(_path, sheet, _base.Name);
+            var opened = await _engine.OpenFileAsync(_path, sheet, _base.Name, _csvOptions);
             _base = opened.Relation;
             _info.IsOpen = false;
             if (opened.Note is not null) ShowInfo(opened.Note, InfoBarSeverity.Informational);
@@ -210,6 +236,15 @@ public sealed partial class DataDocumentView : Grid
         {
             SetBusy(false);
         }
+    }
+
+    private async Task ShowCsvOptionsAsync()
+    {
+        if (_busy || XamlRoot is null) return;
+        var chosen = await Dialogs.CsvOptionsAsync(XamlRoot, ActualTheme, _csvOptions);
+        if (chosen is null) return;
+        _csvOptions = chosen;
+        await ReloadSheetAsync(0);
     }
 
     /// <summary>Sıralama, arama ve süzgeçleri sıfırlar (görünüm tablosunu silmez).</summary>
@@ -226,6 +261,7 @@ public sealed partial class DataDocumentView : Grid
     private Grid BuildToolbar()
     {
         var bar = new Grid { Padding = new Thickness(12, 6, 8, 6), ColumnSpacing = 10 };
+        _toolbar = bar;
         bar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         bar.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         bar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -285,6 +321,9 @@ public sealed partial class DataDocumentView : Grid
         buttons.Children.Add(ToolButton("", Loc.T("Dışa aktar"), Loc.T("Görünen veriyi CSV, Parquet ya da JSON olarak kaydet (Ctrl+Shift+E)"), () => _ = ExportAsync()));
         _textButton = ToolButton("", Loc.T("Metin"), Loc.T("Dosyayı ham metin olarak aç"), () => OpenAsTextRequested?.Invoke(this, EventArgs.Empty));
         buttons.Children.Add(_textButton);
+        _csvButton = ToolButton("\uE9E9", "CSV", Loc.T("CSV okuma seçenekleri: ayraç, ondalık, başlık, kodlama"), () => _ = ShowCsvOptionsAsync());
+        _csvButton.Visibility = Visibility.Collapsed;
+        buttons.Children.Add(_csvButton);
         SetColumn(buttons, 3);
         bar.Children.Add(buttons);
 
@@ -343,7 +382,34 @@ public sealed partial class DataDocumentView : Grid
         actions.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         actions.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         actions.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        actions.Children.Add(run);
+        var history = new Button { Content = Loc.T("Geçmiş") };
+        var historyMenu = new MenuFlyout();
+        historyMenu.Opening += (_, _) =>
+        {
+            historyMenu.Items.Clear();
+            var items = SqlHistory.Items;
+            if (items.Count == 0)
+            {
+                historyMenu.Items.Add(new MenuFlyoutItem { Text = Loc.T("(boş)"), IsEnabled = false });
+                return;
+            }
+            foreach (var query in items.Take(25))
+            {
+                string line = string.Join(" ", query.Split(new[] { '\r', '\n', '\t' }, StringSplitOptions.RemoveEmptyEntries).Select(part => part.Trim()));
+                var item = new MenuFlyoutItem { Text = line.Length > 80 ? line[..80] + "…" : line };
+                item.Click += (_, _) =>
+                {
+                    _sqlBox.Text = query.Replace("\r\n", "\r").Replace('\n', '\r');
+                    _sqlBox.Focus(FocusState.Programmatic);
+                };
+                historyMenu.Items.Add(item);
+            }
+        };
+        history.Flyout = historyMenu;
+        var runGroup = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        runGroup.Children.Add(run);
+        runGroup.Children.Add(history);
+        actions.Children.Add(runGroup);
         SetColumn(_backButton, 1);
         actions.Children.Add(_backButton);
         SetColumn(_tablesHint, 2);
@@ -530,6 +596,7 @@ public sealed partial class DataDocumentView : Grid
         {
             _queryName ??= _engine.NewInternalName("q");
             _query = await _engine.QueryAsync(sql, _queryName);
+            SqlHistory.Add(sql.Replace("\r\n", "\n").Replace('\r', '\n'));
             ResetView();
             await DropViewAsync();
             _info.IsOpen = false;
@@ -698,6 +765,7 @@ public sealed partial class DataDocumentView : Grid
         {
             var picker = new FileSavePicker();
             WinRT.Interop.InitializeWithWindow.Initialize(picker, _hwnd);
+            picker.FileTypeChoices["Excel (*.xlsx)"] = new List<string> { ".xlsx" };
             picker.FileTypeChoices["CSV (*.csv)"] = new List<string> { ".csv" };
             picker.FileTypeChoices["Parquet (*.parquet)"] = new List<string> { ".parquet" };
             picker.FileTypeChoices["JSON (*.json)"] = new List<string> { ".json" };
@@ -714,7 +782,34 @@ public sealed partial class DataDocumentView : Grid
         }
         if (string.IsNullOrEmpty(path)) return;
 
-        var format = Path.GetExtension(path).ToLowerInvariant() switch
+        string chosenExtension = Path.GetExtension(path).ToLowerInvariant();
+        if (chosenExtension == ".xlsx")
+        {
+            SetBusy(true);
+            try
+            {
+                var (rows, truncated) = await _engine.ExportXlsxAsync(current, path);
+                if (truncated)
+                {
+                    ShowInfo(Loc.F("Excel bir sayfada en çok {0} satır tutar; ilk {1} satır yazıldı: {2}", Number(XlsxWriter.MaxRows), Number(rows), path), InfoBarSeverity.Warning);
+                }
+                else
+                {
+                    Notified?.Invoke(this, Loc.F("{0} satır dışa aktarıldı: {1}", Number(rows), path));
+                }
+            }
+            catch (Exception ex)
+            {
+                ShowInfo(ex.Message, InfoBarSeverity.Error);
+            }
+            finally
+            {
+                SetBusy(false);
+            }
+            return;
+        }
+
+        var format = chosenExtension switch
         {
             ".parquet" => ExportFormat.Parquet,
             ".json" => ExportFormat.Json,
@@ -727,7 +822,7 @@ public sealed partial class DataDocumentView : Grid
         try
         {
             await _engine.ExportAsync(current, path, format);
-            ShowInfo(Loc.F("{0} satır dışa aktarıldı: {1}", Number(current.RowCount), path), InfoBarSeverity.Success);
+            Notified?.Invoke(this, Loc.F("{0} satır dışa aktarıldı: {1}", Number(current.RowCount), path));
         }
         catch (Exception ex)
         {

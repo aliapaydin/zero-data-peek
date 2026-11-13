@@ -27,6 +27,11 @@
   #toolbar select:focus { border-color: var(--accent); }
   #toolbar input[type=color], #toolbar input[type=file] { position: absolute; width: 0; height: 0; opacity: 0; pointer-events: none; }
   #scroller { flex: 1; overflow: auto; padding: 24px 24px 48px; }
+  :root.compact #toolbar { padding: 2px 6px; gap: 0; }
+  :root.compact #toolbar button { min-width: 24px; height: 24px; padding: 0 4px; }
+  :root.compact #toolbar select { height: 24px; font-size: 12px; }
+  :root.compact #toolbar .sep { height: 16px; margin: 0 3px; }
+  :root.compact #scroller { padding: 8px 8px 24px; }
   #page { box-sizing: border-box; width: 794px; min-height: 1123px; margin: 0 auto; padding: 96px; background: #FFFFFF; box-shadow: var(--shadow); outline: none; border-radius: 2px; }
   @media print {
     body { background: #FFF; display: block; overflow: visible; height: auto; }
@@ -443,6 +448,7 @@
     text: function () { return page.innerText; },
     options: function (o) {
       if (o.theme) document.documentElement.classList.toggle('dark', o.theme === 'dark');
+      if (typeof o.compact === 'boolean') document.documentElement.classList.toggle('compact', o.compact);
       if (o.zoom) page.style.zoom = String(o.zoom / 100);
       if (o.lang && o.lang !== lang) { lang = o.lang === 'en' ? 'en' : 'tr'; buildToolbar(); }
     },

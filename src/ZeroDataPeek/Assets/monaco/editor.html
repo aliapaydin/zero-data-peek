@@ -5,12 +5,32 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self' data: blob: 'unsafe-inline' 'unsafe-eval'; connect-src 'self'">
 <title>Zero Data Peek</title>
 <style>
-  html, body, #editor { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; }
-  body { background: transparent; }
+  html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; }
+  body { background: transparent; display: flex; }
+  #editor { flex: 1 1 0; min-width: 0; height: 100%; overflow: hidden; }
+  #preview { display: none; flex: 1 1 0; min-width: 0; height: 100%; overflow: auto; box-sizing: border-box; padding: 16px 24px 32px;
+             border-left: 1px solid #DCDFE4; background: #FFFFFF; color: #1B1E25; font: 14px/1.55 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; }
+  body.preview #preview { display: block; }
+  body.dark #preview { background: #1B1E25; color: #E3E6EB; border-left-color: #33373F; }
+  #preview h1, #preview h2 { border-bottom: 1px solid rgba(128,128,128,.3); padding-bottom: .25em; }
+  #preview h1 { font-size: 1.8em; } #preview h2 { font-size: 1.4em; } #preview h3 { font-size: 1.15em; }
+  #preview code { font: 13px 'Cascadia Mono', Consolas, monospace; background: rgba(128,128,128,.16); padding: 1px 5px; border-radius: 4px; }
+  #preview pre { background: rgba(128,128,128,.13); padding: 12px 14px; border-radius: 6px; overflow: auto; }
+  #preview pre code { background: none; padding: 0; }
+  #preview blockquote { margin: 0 0 1em; padding: 0 1em; border-left: 3px solid rgba(128,128,128,.45); opacity: .85; }
+  #preview table { border-collapse: collapse; margin: 0 0 1em; }
+  #preview th, #preview td { border: 1px solid rgba(128,128,128,.4); padding: 4px 10px; }
+  #preview img { max-width: 100%; }
+  #preview a { color: #1F6FD6; } body.dark #preview a { color: #6BA9FF; }
+  #preview hr { border: none; border-top: 1px solid rgba(128,128,128,.4); }
 </style>
 </head>
 <body>
 <div id="editor"></div>
+<div id="preview"></div>
+<!-- Bu ikisi Monaco'nun yükleyicisinden ÖNCE gelmeli (yoksa kendilerini AMD modülü sanıp yüklenmezler). -->
+<script src="lib/sql-formatter.min.js"></script>
+<script src="lib/marked.min.js"></script>
 <script src="vs/loader.js"></script>
 <script>
 // Zero Data Peek kod düzenleyicisi: Monaco + uygulama köprüsü.
@@ -59,6 +79,7 @@
     editor.onDidChangeModelContent(function () {
       if (!loading) post({ type: 'changed' });
       queueCursor();
+      queuePreview();
     });
     editor.onDidChangeCursorSelection(queueCursor);
 
@@ -104,6 +125,115 @@
         length: model.getValueLength()
       });
     }, 50);
+  }
+
+  // ------------------------------------------------------------------ Markdown önizleme
+
+  var previewOn = false, previewTimer = 0;
+  var previewPane = document.getElementById('preview');
+  function queuePreview() {
+    if (!previewOn || previewTimer) return;
+    previewTimer = setTimeout(function () { previewTimer = 0; renderPreview(); }, 200);
+  }
+  function renderPreview() {
+    if (!previewOn || !editor) return;
+    var html = '';
+    try { html = marked.parse(editor.getModel().getValue(), { gfm: true, breaks: false }); }
+    catch (error) { html = '<pre>' + String(error).replace(/</g, '&lt;') + '</pre>'; }
+    // Belgedeki HTML'den betik ve olay öznitelikleri ayıklanır; dış kaynaklar zaten içerik güvenliği kuralıyla engelli.
+    var doc = new DOMParser().parseFromString(html, 'text/html');
+    var bad = doc.querySelectorAll('script,style,iframe,object,embed,link,meta,form,input,button,textarea,select');
+    for (var i = 0; i < bad.length; i++) bad[i].remove();
+    var all = doc.body.querySelectorAll('*');
+    for (var j = 0; j < all.length; j++) {
+      var attributes = all[j].attributes;
+      for (var k = attributes.length - 1; k >= 0; k--) {
+        var name = attributes[k].name.toLowerCase(), value = attributes[k].value;
+        if (name.indexOf('on') === 0 || ((name === 'href' || name === 'src') && /^\s*javascript:/i.test(value))) all[j].removeAttribute(attributes[k].name);
+      }
+      if (all[j].tagName === 'A') all[j].addEventListener('click', function (e) { e.preventDefault(); });
+    }
+    var top = previewPane.scrollTop;
+    previewPane.innerHTML = '';
+    while (doc.body.firstChild) previewPane.appendChild(document.adoptNode(doc.body.firstChild));
+    previewPane.scrollTop = top;
+  }
+
+  // ------------------------------------------------------------------ biçimlendirme
+
+  function formatXml(text) {
+    var doc = new DOMParser().parseFromString(text, 'application/xml');
+    var problem = doc.getElementsByTagName('parsererror')[0];
+    if (problem) {
+      var detail = /error on line[^\n]*?(?=Below is|$)/.exec(problem.textContent);
+      throw new Error(detail ? detail[0].trim() : problem.textContent.split('\n')[0]);
+    }
+    var out = [];
+    var declaration = /^\s*<\?xml[^>]*\?>/.exec(text);
+    if (declaration) out.push(declaration[0].trim());
+    function attrs(el) {
+      var s = '';
+      for (var i = 0; i < el.attributes.length; i++) s += ' ' + el.attributes[i].name + '="' + el.attributes[i].value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;') + '"';
+      return s;
+    }
+    function esc(t) { return t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+    function walk(node, depth) {
+      var pad = new Array(depth + 1).join('  ');
+      if (node.nodeType === 1) {
+        var children = [];
+        for (var c = node.firstChild; c; c = c.nextSibling) {
+          if (c.nodeType === 3 && c.nodeValue.trim() === '') continue;
+          children.push(c);
+        }
+        var open = '<' + node.nodeName + attrs(node);
+        if (!children.length) out.push(pad + open + '/>');
+        else if (children.length === 1 && children[0].nodeType === 3) out.push(pad + open + '>' + esc(children[0].nodeValue.trim()) + '</' + node.nodeName + '>');
+        else {
+          out.push(pad + open + '>');
+          children.forEach(function (child) { walk(child, depth + 1); });
+          out.push(pad + '</' + node.nodeName + '>');
+        }
+      } else if (node.nodeType === 3) out.push(pad + esc(node.nodeValue.trim()));
+      else if (node.nodeType === 4) out.push(pad + '<![CDATA[' + node.nodeValue + ']]>');
+      else if (node.nodeType === 8) out.push(pad + '<!--' + node.nodeValue + '-->');
+      else if (node.nodeType === 7) out.push(pad + '<?' + node.target + ' ' + node.data + '?>');
+      else if (node.nodeType === 10) out.push(pad + new XMLSerializer().serializeToString(node));
+    }
+    for (var n = doc.firstChild; n; n = n.nextSibling) walk(n, 0);
+    return out.join('\n') + '\n';
+  }
+
+  // JSON'u yeniden girintiler. Değerlere dokunmaz: sayılar ve dizgiler metindeki haliyle kalır
+  // (JSON.stringify büyük tamsayıları ve ondalıkları değiştirebilirdi).
+  function formatJson(text) {
+    var out = '', depth = 0, i = 0, n = text.length, pad = function (d) { return '\n' + new Array(d + 1).join('    '); };
+    while (i < n) {
+      var c = text[i];
+      if (c === '"') {
+        var j = i + 1;
+        while (j < n && text[j] !== '"') j += text[j] === '\\' ? 2 : 1;
+        out += text.substring(i, j + 1);
+        i = j + 1;
+      } else if (c === '{' || c === '[') {
+        var k = i + 1;
+        while (k < n && /\s/.test(text[k])) k++;
+        if (text[k] === (c === '{' ? '}' : ']')) { out += c + text[k]; i = k + 1; }
+        else { depth++; out += c + pad(depth); i++; }
+      } else if (c === '}' || c === ']') { depth = Math.max(0, depth - 1); out += pad(depth) + c; i++; }
+      else if (c === ',') { out += ',' + pad(depth); i++; }
+      else if (c === ':') { out += ': '; i++; }
+      else if (/\s/.test(c)) i++;
+      else { out += c; i++; }
+    }
+    return out + '\n';
+  }
+
+  function replaceAll(text) {
+    var model = editor.getModel();
+    if (text === model.getValue()) return;
+    editor.pushUndoStop();
+    editor.executeEdits('zdp-format', [{ range: model.getFullModelRange(), text: text }]);
+    editor.pushUndoStop();
   }
 
   // Dosya adından dil: Monaco'nun kayıtlı dillerinin uzantı ve dosya adı listelerine bakılır.
@@ -153,9 +283,53 @@
       editor.executeEdits('zdp', [{ range: editor.getSelection(), text: text, forceMoveMarkers: true }]);
       editor.pushUndoStop();
     },
+    // Belgeyi biçimlendirir. Dönen değer: 'ok', 'unsupported' ya da 'error: …'
+    format: function () {
+      var model = editor.getModel(), language = model.getLanguageId();
+      try {
+        if (language === 'sql' || language === 'mysql' || language === 'pgsql' || language === 'redshift') {
+          var dialect = { mysql: 'mysql', pgsql: 'postgresql', redshift: 'redshift' }[language] || 'sql';
+          replaceAll(sqlFormatter.format(model.getValue(), { language: dialect, tabWidth: 4, keywordCase: 'upper' }) + '\n');
+          return 'ok';
+        }
+        if (language === 'xml') { replaceAll(formatXml(model.getValue())); return 'ok'; }
+        if (language === 'json') {
+          JSON.parse(model.getValue()); // yalnızca geçerlilik denetimi; hata varsa ileti buradan gelir
+          replaceAll(formatJson(model.getValue()));
+          return 'ok';
+        }
+        var action = editor.getAction('editor.action.formatDocument');
+        if (action && action.isSupported()) { action.run(); return 'ok'; }
+        return 'unsupported';
+      } catch (error) {
+        return 'error: ' + String(error && error.message ? error.message : error).split('\n')[0];
+      }
+    },
+    // Markdown önizlemeyi açar ya da kapatır; açık olup olmadığını döndürür.
+    preview: function (on) {
+      previewOn = typeof on === 'boolean' ? on : !previewOn;
+      document.body.classList.toggle('preview', previewOn);
+      if (previewOn) renderPreview();
+      return previewOn;
+    },
+    reveal: function (line, column) {
+      var position = { lineNumber: Math.max(1, line || 1), column: Math.max(1, column || 1) };
+      editor.setPosition(position);
+      editor.revealLineInCenter(position.lineNumber);
+      editor.focus();
+    },
+    language: function () { return editor.getModel().getLanguageId(); },
     options: function (o) {
-      if (o.theme) monaco.editor.setTheme(o.theme === 'dark' ? 'zdp-dark' : 'zdp-light');
+      if (o.theme) { monaco.editor.setTheme(o.theme === 'dark' ? 'zdp-dark' : 'zdp-light'); document.body.classList.toggle('dark', o.theme === 'dark'); }
       var update = {};
+      if (typeof o.compact === 'boolean') {
+        update.lineHeight = o.compact && o.fontSize ? Math.round(o.fontSize * 1.22) : 0;
+        update.padding = { top: o.compact ? 2 : 8 };
+        update.lineNumbersMinChars = o.compact ? 3 : 5;
+        update.glyphMargin = false;
+        update.folding = true;
+        update.lineDecorationsWidth = o.compact ? 4 : 10;
+      }
       if (o.fontFamily) update.fontFamily = o.fontFamily + ', Cascadia Mono, Consolas, monospace';
       if (o.fontSize) update.fontSize = o.fontSize;
       if (typeof o.wordWrap === 'boolean') update.wordWrap = o.wordWrap ? 'on' : 'off';

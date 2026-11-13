@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' data: blob: 'unsafe-inline' 'unsafe-eval'; connect-src 'self'">
+<title>Zero Data Peek</title>
+<style>
+  html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: transparent; }
+  #diff { width: 100%; height: 100%; overflow: hidden; }
+</style>
+</head>
+<body>
+<div id="diff"></div>
+<script src="vs/loader.js"></script>
+<script>
+// Zero Data Peek dosya karşılaştırma: Monaco'nun fark düzenleyicisi + uygulama köprüsü (salt okunur).
+// Uygulama → sayfa: 'load' (original, modified, adlar), 'options', 'shortcuts'; zdp.next / zdp.previous / zdp.sideBySide.
+// Sayfa → uygulama: 'ready', 'failed', 'stats' (fark sayısı), 'shortcut', 'zoom'.
+(function () {
+  var host = window.chrome && window.chrome.webview;
+  function post(message) { if (host) host.postMessage(message); }
+
+  var diff = null, shortcuts = [], sideBySide = true;
+
+  function languageFor(fileName) {
+    if (!fileName) return 'plaintext';
+    var lower = fileName.toLowerCase(), dot = lower.lastIndexOf('.'), extension = dot >= 0 ? lower.substring(dot) : '';
+    var languages = monaco.languages.getLanguages();
+    for (var i = 0; i < languages.length; i++) {
+      var names = languages[i].filenames || [];
+      for (var n = 0; n < names.length; n++) if (names[n].toLowerCase() === lower) return languages[i].id;
+    }
+    if (extension) {
+      for (var j = 0; j < languages.length; j++) {
+        var extensions = languages[j].extensions || [];
+        for (var k = 0; k < extensions.length; k++) if (extensions[k].toLowerCase() === extension) return languages[j].id;
+      }
+    }
+    return 'plaintext';
+  }
+
+  function stats() {
+    var changes = diff.getLineChanges();
+    post({ type: 'stats', changes: changes ? changes.length : -1 });
+  }
+
+  require.config({ paths: { vs: new URL('vs', window.location.href).href } });
+  require(['vs/editor/editor.main'], function () {
+    monaco.editor.defineTheme('zdp-light', { base: 'vs', inherit: true, rules: [], colors: { 'editor.background': '#FBFBFC', 'editorGutter.background': '#FBFBFC' } });
+    monaco.editor.defineTheme('zdp-dark', { base: 'vs-dark', inherit: true, rules: [], colors: { 'editor.background': '#1B1E25', 'editorGutter.background': '#1B1E25' } });
+
+    diff = monaco.editor.createDiffEditor(document.getElementById('diff'), {
+      theme: 'zdp-light',
+      automaticLayout: true,
+      readOnly: true,
+      originalEditable: false,
+      renderSideBySide: true,
+      useInlineViewWhenSpaceIsLimited: false,
+      ignoreTrimWhitespace: false,
+      renderOverviewRuler: true,
+      fontFamily: 'Cascadia Mono, Consolas, monospace',
+      fontSize: 14,
+      minimap: { enabled: false },
+      mouseWheelZoom: false,
+      scrollBeyondLastLine: false,
+      links: false,
+      unicodeHighlight: { ambiguousCharacters: false, invisibleCharacters: false },
+      padding: { top: 8 }
+    });
+    diff.onDidUpdateDiff(stats);
+
+    document.addEventListener('wheel', function (e) {
+      if (!e.ctrlKey) return;
+      e.preventDefault();
+      e.stopPropagation();
+      post({ type: 'zoom', delta: e.deltaY < 0 ? 10 : -10 });
+    }, { capture: true, passive: false });
+
+    document.addEventListener('keydown', function (e) {
+      for (var i = 0; i < shortcuts.length; i++) {
+        var s = shortcuts[i];
+        if (s.key === e.keyCode && s.ctrl === e.ctrlKey && s.shift === e.shiftKey && s.alt === e.altKey) {
+          e.preventDefault();
+          e.stopPropagation();
+          post({ type: 'shortcut', id: s.id });
+          return;
+        }
+      }
+    }, true);
+
+    post({ type: 'ready' });
+  }, function (error) {
+    post({ type: 'failed', message: String(error && error.message ? error.message : error) });
+  });
+
+  window.zdp = {
+    load: function (original, modified, originalName, modifiedName) {
+      var old = diff.getModel();
+      diff.setModel({
+        original: monaco.editor.createModel(original, languageFor(originalName)),
+        modified: monaco.editor.createModel(modified, languageFor(modifiedName || originalName))
+      });
+      if (old) { old.original.dispose(); old.modified.dispose(); }
+    },
+    next: function () { diff.goToDiff('next'); },
+    previous: function () { diff.goToDiff('previous'); },
+    // Yan yana / satır içi görünüm; yeni durumu döndürür.
+    sideBySide: function (on) {
+      sideBySide = typeof on === 'boolean' ? on : !sideBySide;
+      diff.updateOptions({ renderSideBySide: sideBySide });
+      return sideBySide;
+    },
+    ignoreWhitespace: function (on) { diff.updateOptions({ ignoreTrimWhitespace: !!on }); },
+    changes: function () { var c = diff.getLineChanges(); return c ? c.length : -1; },
+    focus: function () { diff.getModifiedEditor().focus(); },
+    options: function (o) {
+      if (o.theme) monaco.editor.setTheme(o.theme === 'dark' ? 'zdp-dark' : 'zdp-light');
+      var update = {};
+      if (o.fontFamily) update.fontFamily = o.fontFamily + ', Cascadia Mono, Consolas, monospace';
+      if (o.fontSize) update.fontSize = o.fontSize;
+      if (typeof o.wordWrap === 'boolean') { update.wordWrap = o.wordWrap ? 'on' : 'off'; update.diffWordWrap = o.wordWrap ? 'on' : 'off'; }
+      if (typeof o.compact === 'boolean') {
+        update.lineHeight = o.compact && o.fontSize ? Math.round(o.fontSize * 1.22) : 0;
+        update.padding = { top: o.compact ? 2 : 8 };
+        update.lineNumbersMinChars = o.compact ? 3 : 5;
+      }
+      diff.updateOptions(update);
+    },
+    shortcuts: function (list) { shortcuts = list || []; }
+  };
+
+  if (host) {
+    host.addEventListener('message', function (e) {
+      var m = e.data;
+      if (!m || !diff) return;
+      if (m.type === 'load') zdp.load(m.original, m.modified, m.originalName, m.modifiedName);
+      else if (m.type === 'options') zdp.options(m);
+      else if (m.type === 'shortcuts') zdp.shortcuts(m.list);
+    });
+  }
+})();
+</script>
+</body>
+</html>

@@ -312,9 +312,15 @@
       if (previewOn) renderPreview();
       return previewOn;
     },
-    reveal: function (line, column) {
-      var position = { lineNumber: Math.max(1, line || 1), column: Math.max(1, column || 1) };
-      editor.setPosition(position);
+    // İmleci satıra götürür; uzunluk verilirse o kadar karakteri seçer (dosyalarda arama sonucu).
+    reveal: function (line, column, length) {
+      var count = editor.getModel().getLineCount();
+      var position = { lineNumber: Math.min(count, Math.max(1, line || 1)), column: Math.max(1, column || 1) };
+      if (length > 0) {
+        editor.setSelection(new monaco.Range(position.lineNumber, position.column, position.lineNumber, position.column + length));
+      } else {
+        editor.setPosition(position);
+      }
       editor.revealLineInCenter(position.lineNumber);
       editor.focus();
     },
@@ -356,7 +362,7 @@
     host.addEventListener('message', function (e) {
       var m = e.data;
       if (!m || !editor) return;
-      if (m.type === 'load') post({ type: 'language', id: zdp.load(m.text, m.fileName) });
+      if (m.type === 'load') { post({ type: 'language', id: zdp.load(m.text, m.fileName) }); if (m.line > 0) zdp.reveal(m.line, m.column, m.length); }
       else if (m.type === 'options') zdp.options(m);
       else if (m.type === 'shortcuts') zdp.shortcuts(m.list);
       else if (m.type === 'insert') zdp.insert(m.text);

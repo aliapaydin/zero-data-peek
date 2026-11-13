@@ -38,7 +38,22 @@ public sealed record CsvOptions(string Delimiter = "", string Decimal = "", int 
 }
 
 /// <summary>Tek kolona uygulanan değer süzgeci: değere eşit olanlar ya da (Exclude) olmayanlar. Value null ise boş (NULL) değerler.</summary>
-public sealed record DataFilter(string Column, string? Value, bool Exclude);
+public sealed record DataFilter(string Column, string? Value, bool Exclude, FilterOp Op = FilterOp.Equals, string? Value2 = null);
+
+/// <summary>Süzgeç koşulu. Equals, Contains, StartsWith, EndsWith ve Empty, <see cref="DataFilter.Exclude"/> ile tersine çevrilebilir.</summary>
+public enum FilterOp
+{
+    Equals,
+    Contains,
+    StartsWith,
+    EndsWith,
+    Greater,
+    GreaterOrEqual,
+    Less,
+    LessOrEqual,
+    Between,
+    Empty,
+}
 
 /// <summary>Tek kolon için özet istatistikler.</summary>
 public sealed record ColumnProfile(
@@ -415,10 +430,8 @@ public sealed class DataEngine : IDisposable
         }
         foreach (var filter in filters)
         {
-            string column = Quote(filter.Column);
-            if (filter.Value is null) conditions.Add(filter.Exclude ? $"{column} IS NOT NULL" : $"{column} IS NULL");
-            else if (filter.Exclude) conditions.Add($"{column} IS NULL OR CAST({column} AS VARCHAR) <> {Literal(filter.Value)}");
-            else conditions.Add($"CAST({column} AS VARCHAR) = {Literal(filter.Value)}");
+            string type = source.Columns.FirstOrDefault(c => c.Name == filter.Column)?.Type ?? "VARCHAR";
+            conditions.Add(FilterSql(filter, type));
         }
         if (conditions.Count > 0)
         {
@@ -432,6 +445,60 @@ public sealed class DataEngine : IDisposable
         Execute(connection, sql.ToString());
         return Describe(connection, target, isTable: true);
     });
+
+    /// <summary>Süzgecin WHERE koşulu. Karşılaştırmalar kolon türüne göre kurulur: tarih kolonunda tarih, sayıya benzeyen değerde sayı, yoksa metin.</summary>
+    private static string FilterSql(DataFilter filter, string columnType)
+    {
+        string column = Quote(filter.Column);
+        string text = $"CAST({column} AS VARCHAR)";
+        string value = filter.Value ?? string.Empty;
+
+        string Like(string pattern)
+        {
+            string escaped = value.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_");
+            string match = $"{text} ILIKE {Literal(string.Format(CultureInfo.InvariantCulture, pattern, escaped))} ESCAPE '\\'";
+            return filter.Exclude ? $"{column} IS NULL OR NOT ({match})" : match;
+        }
+
+        string Compare(string op, string raw)
+        {
+            raw = raw.Trim();
+            bool temporal = columnType.StartsWith("DATE", StringComparison.OrdinalIgnoreCase) ||
+                            columnType.StartsWith("TIME", StringComparison.OrdinalIgnoreCase);
+            if (temporal) return $"{column} {op} TRY_CAST({Literal(raw)} AS {columnType})";
+            if (TryNumber(raw, out double number))
+            {
+                return $"TRY_CAST({column} AS DOUBLE) {op} {number.ToString("R", CultureInfo.InvariantCulture)}";
+            }
+            return $"{text} {op} {Literal(raw)}";
+        }
+
+        switch (filter.Op)
+        {
+            case FilterOp.Contains: return Like("%{0}%");
+            case FilterOp.StartsWith: return Like("{0}%");
+            case FilterOp.EndsWith: return Like("%{0}");
+            case FilterOp.Greater: return Compare(">", value);
+            case FilterOp.GreaterOrEqual: return Compare(">=", value);
+            case FilterOp.Less: return Compare("<", value);
+            case FilterOp.LessOrEqual: return Compare("<=", value);
+            case FilterOp.Between: return "(" + Compare(">=", value) + ") AND (" + Compare("<=", filter.Value2 ?? value) + ")";
+            case FilterOp.Empty:
+                return filter.Exclude
+                    ? $"{column} IS NOT NULL AND TRIM({text}) <> ''"
+                    : $"{column} IS NULL OR TRIM({text}) = ''";
+            default:
+                if (filter.Value is null) return filter.Exclude ? $"{column} IS NOT NULL" : $"{column} IS NULL";
+                return filter.Exclude ? $"{column} IS NULL OR {text} <> {Literal(filter.Value)}" : $"{text} = {Literal(filter.Value)}";
+        }
+    }
+
+    /// <summary>"1250", "1250.5" ve "1250,5" sayı sayılır (binlik ayraçlı yazımlar sayılmaz).</summary>
+    private static bool TryNumber(string raw, out double number)
+    {
+        string normalized = raw.Contains(',') && !raw.Contains('.') ? raw.Replace(',', '.') : raw;
+        return double.TryParse(normalized, NumberStyles.Float, CultureInfo.InvariantCulture, out number) && double.IsFinite(number);
+    }
 
     /// <summary>Kullanıcının SQL'ini çalıştırır ve sonucu tabloya alır. Yalnızca sonuç döndüren ifadeler (SELECT, SUMMARIZE, DESCRIBE…) çalışır.</summary>
     public Task<DataRelation> QueryAsync(string sql, string target) => RunAsync(connection =>

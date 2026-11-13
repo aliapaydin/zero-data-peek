@@ -141,7 +141,7 @@ public sealed partial class TextDocumentView : Grid, ITextEditor
     {
     }
 
-    public void Reveal(int line)
+    public void Reveal(int line, int column = 1, int length = 0)
     {
     }
 

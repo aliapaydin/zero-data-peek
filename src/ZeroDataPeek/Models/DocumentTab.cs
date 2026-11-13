@@ -61,7 +61,15 @@ public sealed partial class DocumentTab : INotifyPropertyChanged
 
     public DocumentKind Kind => View is RichDocumentView ? DocumentKind.Document : FileKinds.KindOf(_filePath);
 
-    public string Glyph => FileKinds.Glyph(Kind);
+    /// <summary>Görünüm dosya karşılaştırmasıysa o; değilse null.</summary>
+    public DiffDocumentView? Diff => View as DiffDocumentView;
+
+    public string Glyph => View switch
+    {
+        DiffDocumentView => "\uE8AB",
+        SearchView => "\uE721",
+        _ => FileKinds.Glyph(Kind),
+    };
 
     /// <summary>Sekme başlığı; kaydedilmemiş değişiklik varsa başında nokta.</summary>
     public string DisplayTitle => _isDirty ? "● " + _title : _title;

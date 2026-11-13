@@ -31,6 +31,16 @@
                 </Grid>
             </DataTemplate>
 
+            <!-- Dosyalarda arama sonucu: dosya başlığı ya da eşleşen satır (eşleşme vurgulu) -->
+            <DataTemplate x:Key="SearchHitTemplate" x:DataType="models:SearchHit">
+                <Grid ColumnDefinitions="46,*,Auto" ColumnSpacing="10" Height="{x:Bind RowHeight}" Margin="{x:Bind RowMargin}" ToolTipService.ToolTip="{x:Bind ToolTip}">
+                    <FontIcon Glyph="{x:Bind Glyph}" FontSize="13" HorizontalAlignment="Left" VerticalAlignment="Center" />
+                    <TextBlock Text="{x:Bind LineText}" FontSize="11" Opacity="0.55" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                    <TextBlock Grid.Column="1" FontSize="{x:Bind FontSize}" FontWeight="{x:Bind Weight}" FontFamily="{x:Bind Font}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"><Run Text="{x:Bind Before}" /><Run Text="{x:Bind Match}" FontWeight="Bold" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" /><Run Text="{x:Bind After}" /></TextBlock>
+                    <TextBlock Grid.Column="2" Text="{x:Bind CountText}" FontSize="11" Opacity="0.6" VerticalAlignment="Center" />
+                </Grid>
+            </DataTemplate>
+
             <!-- Gezgin panelindeki satır: girinti, ok, simge, ad; açılamayan dosyalar soluk -->
             <DataTemplate x:Key="ExplorerItemTemplate" x:DataType="models:ExplorerItem">
                 <Grid ColumnDefinitions="14,Auto,*" ColumnSpacing="6" Height="{x:Bind RowHeight}" Margin="{x:Bind Indent}" Opacity="{x:Bind ItemOpacity}" ToolTipService.ToolTip="{x:Bind ToolTip}">
@@ -165,6 +175,8 @@
 
                 <MenuBarItem Title="Görünüm">
                     <ToggleMenuFlyoutItem x:Name="MenuExplorer" Text="Gezgin paneli" Tag="Explorer" Click="Command_Click" KeyboardAcceleratorTextOverride="Ctrl+B" />
+                    <ToggleMenuFlyoutItem x:Name="MenuSplit" Text="Bölünmüş görünüm" Tag="SplitView" Click="Command_Click" KeyboardAcceleratorTextOverride="Ctrl+Alt+B" />
+                    <MenuFlyoutItem x:Name="MenuSwapPanes" Text="Bölmeleri değiştir" Tag="SwapPanes" Click="Command_Click" />
                     <MenuFlyoutSubItem Text="Sekmeler">
                         <MenuFlyoutSubItem.Icon><FontIcon Glyph="&#xEC6C;" /></MenuFlyoutSubItem.Icon>
                         <RadioMenuFlyoutItem x:Name="MenuTabsHorizontal" Text="Üstte (yatay)" GroupName="TabLayout" Tag="TabsHorizontal" Click="Command_Click" />
@@ -191,6 +203,15 @@
                     <MenuFlyoutItem Text="Yakınlaştırmayı sıfırla" Tag="ZoomReset" Click="Command_Click" KeyboardAcceleratorTextOverride="Ctrl+0" />
                 </MenuBarItem>
 
+                <MenuBarItem Title="Araçlar">
+                    <MenuFlyoutItem Text="Dosyalarda ara" Tag="FindInFiles" Click="Command_Click" KeyboardAcceleratorTextOverride="Ctrl+Shift+F">
+                        <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE721;" /></MenuFlyoutItem.Icon>
+                    </MenuFlyoutItem>
+                    <MenuFlyoutItem Text="Dosyaları karşılaştır…" Tag="Compare" Click="Command_Click" KeyboardAcceleratorTextOverride="Ctrl+Alt+D">
+                        <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8AB;" /></MenuFlyoutItem.Icon>
+                    </MenuFlyoutItem>
+                </MenuBarItem>
+
                 <MenuBarItem Title="Oturum">
                     <MenuFlyoutItem x:Name="MenuSessionSave" Text="Oturumu kaydet" Tag="SessionSave" Click="Command_Click" KeyboardAcceleratorTextOverride="Ctrl+Alt+S">
                         <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE74E;" /></MenuFlyoutItem.Icon>
@@ -210,6 +231,9 @@
                 <MenuBarItem Title="Veri">
                     <MenuFlyoutItem x:Name="MenuSqlPanel" Text="SQL paneli" Tag="SqlPanel" Click="Command_Click" KeyboardAcceleratorTextOverride="Ctrl+E">
                         <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE943;" /></MenuFlyoutItem.Icon>
+                    </MenuFlyoutItem>
+                    <MenuFlyoutItem x:Name="MenuDataFilter" Text="Koşullu süzgeç ekle…" Tag="DataFilter" Click="Command_Click" KeyboardAcceleratorTextOverride="Ctrl+Alt+F">
+                        <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE71C;" /></MenuFlyoutItem.Icon>
                     </MenuFlyoutItem>
                     <MenuFlyoutItem x:Name="MenuColumnProfile" Text="Kolon profili" Tag="ColumnProfile" Click="Command_Click" KeyboardAcceleratorTextOverride="Ctrl+Shift+I">
                         <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE9D9;" /></MenuFlyoutItem.Icon>
@@ -360,7 +384,33 @@
                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                 BorderThickness="1">
                 <Grid>
-                    <Grid x:Name="DocumentHost" />
+                    <!-- Sekme görünümleri buraya eklenir (1. satır). Bölünmüş görünümde 0. sütun sol, 2. sütun sağ bölme. -->
+                    <Grid x:Name="DocumentHost" RowDefinitions="Auto,*">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition x:Name="MainPaneColumn" Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition x:Name="SidePaneColumn" Width="0" />
+                        </Grid.ColumnDefinitions>
+                        <Grid x:Name="MainHeader" Visibility="Collapsed" Background="Transparent" Padding="12,4,8,4" ColumnDefinitions="Auto,*" ColumnSpacing="8" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,0,0,1">
+                            <Ellipse x:Name="MainHeaderMark" Width="7" Height="7" VerticalAlignment="Center">
+                                <Ellipse.Fill><SolidColorBrush Color="{ThemeResource SystemAccentColor}" /></Ellipse.Fill>
+                            </Ellipse>
+                            <TextBlock x:Name="MainHeaderText" Grid.Column="1" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Style="{StaticResource CaptionTextBlockStyle}" />
+                        </Grid>
+                        <controls:PaneSplitter x:Name="SplitSplitter" Grid.Column="1" Grid.RowSpan="2" Visibility="Collapsed" />
+                        <Grid x:Name="SideHeader" Grid.Column="2" Visibility="Collapsed" Background="Transparent" Padding="12,0,4,0" ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="8" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,0,0,1">
+                            <Ellipse x:Name="SideHeaderMark" Width="7" Height="7" VerticalAlignment="Center">
+                                <Ellipse.Fill><SolidColorBrush Color="{ThemeResource SystemAccentColor}" /></Ellipse.Fill>
+                            </Ellipse>
+                            <TextBlock x:Name="SideHeaderText" Grid.Column="1" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Style="{StaticResource CaptionTextBlockStyle}" />
+                            <Button Grid.Column="2" Style="{StaticResource SubtleButton}" Width="26" Height="24" MinWidth="0" MinHeight="0" Padding="0" Tag="SwapPanes" Click="Command_Click" ToolTipService.ToolTip="Bölmeleri değiştir" AutomationProperties.Name="Bölmeleri değiştir">
+                                <FontIcon Glyph="&#xE8AB;" FontSize="11" />
+                            </Button>
+                            <Button Grid.Column="3" Style="{StaticResource SubtleButton}" Width="26" Height="24" MinWidth="0" MinHeight="0" Padding="0" Click="SideClose_Click" ToolTipService.ToolTip="Bölünmüş görünümü kapat" AutomationProperties.Name="Bölünmüş görünümü kapat">
+                                <FontIcon Glyph="&#xE711;" FontSize="10" />
+                            </Button>
+                        </Grid>
+                    </Grid>
 
                     <!-- Hiç sekme yokken -->
                     <ScrollViewer x:Name="WelcomePanel" VerticalScrollBarVisibility="Auto">

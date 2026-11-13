@@ -31,6 +31,7 @@ public sealed partial class CodeDocumentView : Grid, ITextEditor
     private AppSettings? _settings;
     private int _zoom = 100;
     private CaretInfo _caret = new(1, 1, 0, 0);
+    private int _pendingLine, _pendingColumn, _pendingLength; // sayfa hazır olmadan istenen konum
 
     public CodeDocumentView(IReadOnlyList<EditorShortcut> shortcuts)
     {
@@ -128,7 +129,8 @@ public sealed partial class CodeDocumentView : Grid, ITextEditor
                     _readyTimer.Stop();
                     Post(new { type = "shortcuts", list = _shortcuts.Select(s => new { id = s.Id, key = s.Key, ctrl = s.Ctrl, shift = s.Shift, alt = s.Alt }).ToArray() });
                     SendOptions();
-                    Post(new { type = "load", text = _text, fileName = _fileName ?? string.Empty });
+                    Post(new { type = "load", text = _text, fileName = _fileName ?? string.Empty, line = _pendingLine, column = _pendingColumn, length = _pendingLength });
+                    _pendingLine = 0;
                     break;
                 case "failed":
                     UseFallback(root.TryGetProperty("message", out var message) ? message.GetString() ?? string.Empty : string.Empty);
@@ -309,9 +311,16 @@ public sealed partial class CodeDocumentView : Grid, ITextEditor
         if (_ready && _fallback is null) Run("zdp.preview()");
     }
 
-    public void Reveal(int line)
+    public void Reveal(int line, int column = 1, int length = 0)
     {
-        if (_ready && _fallback is null) Run("zdp.reveal(" + line.ToString(System.Globalization.CultureInfo.InvariantCulture) + ", 1)");
+        if (_fallback is not null) return;
+        if (!_ready)
+        {
+            (_pendingLine, _pendingColumn, _pendingLength) = (line, column, length); // içerik yüklenince uygulanır
+            return;
+        }
+        var culture = System.Globalization.CultureInfo.InvariantCulture;
+        Run("zdp.reveal(" + line.ToString(culture) + ", " + column.ToString(culture) + ", " + length.ToString(culture) + ")");
     }
 
     public void Copy()

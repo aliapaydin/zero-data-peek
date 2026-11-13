@@ -74,6 +74,7 @@ public sealed partial class MainWindow : Window
         BuildStatusFlyouts();
         InitializeExplorer();
         InitializeBackup();
+        InitializeSplit();
         ShellMenu.Publish(_settings);
         RefreshSessions();
 
@@ -208,6 +209,11 @@ public sealed partial class MainWindow : Window
         Add("Format", "Belgeyi biçimlendir", "Shift+Alt+F", () => _ = FormatActiveAsync(), VirtualKey.F, VirtualKeyModifiers.Shift | VirtualKeyModifiers.Menu);
         Add("MarkdownPreview", "Markdown önizleme", "Ctrl+Shift+V", () => _active?.Editor?.TogglePreview(), VirtualKey.V, CtrlShift);
         Add("Minimap", "Küçük harita", "", ToggleMinimap);
+        Add("FindInFiles", "Dosyalarda ara", "Ctrl+Shift+F", ShowSearch, VirtualKey.F, CtrlShift);
+        Add("Compare", "Dosyaları karşılaştır…", "Ctrl+Alt+D", () => _ = CompareAsync(null), VirtualKey.D, Ctrl | VirtualKeyModifiers.Menu);
+        Add("SplitView", "Bölünmüş görünüm", "Ctrl+Alt+B", ToggleSplit, VirtualKey.B, Ctrl | VirtualKeyModifiers.Menu);
+        Add("SwapPanes", "Bölmeleri değiştir", "", SwapPanes);
+        Add("DataFilter", "Koşullu süzgeç ekle…", "Ctrl+Alt+F", () => _active?.Data?.ShowFilterDialog(), VirtualKey.F, Ctrl | VirtualKeyModifiers.Menu);
         Add("CompactMode", "Kompakt mod", "Ctrl+Alt+K", ToggleCompact, VirtualKey.K, Ctrl | VirtualKeyModifiers.Menu);
         Add("NewDocument", "Yeni belge", "Ctrl+Shift+N", NewDocument, VirtualKey.N, CtrlShift);
         Add("Print", "Yazdır…", "Ctrl+P", () => _active?.Doc?.Print(), VirtualKey.P, Ctrl);
@@ -337,6 +343,8 @@ public sealed partial class MainWindow : Window
     {
         tab.PropertyChanged += Tab_PropertyChanged;
         tab.View.Visibility = Visibility.Collapsed;
+        Grid.SetRow(tab.View, 1); // 0. satır bölme başlıkları
+        tab.View.GotFocus += (_, _) => PaneGotFocus(tab);
         DocumentHost.Children.Add(tab.View);
         _tabs.Add(tab);
         SyncTabViews();
@@ -346,18 +354,22 @@ public sealed partial class MainWindow : Window
     private void Activate(DocumentTab tab)
     {
         if (!_tabs.Contains(tab)) return;
-        if (_active != tab)
+        // Sağ bölmeye sabitlenmiş sekme yerinde kalır; diğer her sekme sol (ana) bölmeye gelir.
+        if (tab != _side) _main = tab;
+        else if (_main is null || _main == tab)
         {
-            if (_active is not null) _active.View.Visibility = Visibility.Collapsed;
-            _active = tab;
-            tab.View.Visibility = Visibility.Visible;
+            _side = null;
+            _main = tab;
         }
+        _active = tab;
+        LayoutPanes();
         SyncSelection();
         UpdateUi();
         MarkActiveInExplorer();
         tab.Editor?.FocusEditor();
         tab.Data?.FocusGrid();
         tab.Doc?.FocusEditor();
+        tab.Diff?.FocusEditor();
     }
 
     private void StepTab(int direction)
@@ -387,15 +399,22 @@ public sealed partial class MainWindow : Window
         DocumentHost.Children.Remove(tab.View);
         tab.Data?.Close();
 
-        if (_active == tab)
+        if (_side == tab) _side = null;
+        if (_main == tab) _main = null;
+        if (_active == tab) _active = null;
+        if (_tabs.Count > 0 && _main is null)
         {
-            _active = null;
-            if (_tabs.Count > 0)
-            {
-                Activate(_tabs[Math.Min(index, _tabs.Count - 1)]);
-                return true;
-            }
+            // Sol bölme boşaldı: sağ bölmede olmayan en yakın sekme gelir; başka sekme yoksa bölme kapanır.
+            var others = _tabs.Where(t => t != _side).ToList();
+            _main = others.Count > 0 ? others[Math.Clamp(index, 0, others.Count - 1)] : _side;
+            if (_main == _side) _side = null;
         }
+        if (_tabs.Count > 0 && _active is null)
+        {
+            Activate(_main!);
+            return true;
+        }
+        LayoutPanes();
         SyncTabViews();
         UpdateUi();
         MarkActiveInExplorer();
@@ -894,6 +913,8 @@ public sealed partial class MainWindow : Window
             tab.Editor?.ApplySettings(_settings);
             tab.Doc?.ApplySettings(_settings);
             tab.Data?.ApplySettings(_settings);
+            tab.Diff?.ApplySettings(_settings);
+            (tab.View as SearchView)?.ApplySettings();
         }
         ApplyTabLayout();
         ApplyExplorerLayout();
@@ -1017,6 +1038,9 @@ public sealed partial class MainWindow : Window
         MenuEdit.IsEnabled = hasEditor || hasDocument;
         MenuDuplicate.IsEnabled = hasEditor;
         MenuFormat.IsEnabled = hasEditor;
+        MenuDataFilter.IsEnabled = hasData;
+        MenuSwapPanes.IsEnabled = IsSplit;
+        if (IsSplit) LayoutPanes(); // bölme başlıklarındaki adlar ve etkin bölme işareti
         MenuPreview.IsEnabled = hasEditor;
 
         UpdateStatus();
@@ -1036,6 +1060,18 @@ public sealed partial class MainWindow : Window
         StatusText.Text = _active is null ? Loc.T("Hazır") : _active.FilePath ?? Loc.T("Henüz kaydedilmedi");
         StatusFormat.Text = _active is null ? string.Empty : FileKinds.FormatName(_active.FilePath);
         if (data is not null) StatusCaret.Text = data.StatusText;
+        if (_active?.Diff is { } diff)
+        {
+            StatusCaret.Visibility = Visibility.Visible;
+            StatusCaret.Text = diff.StatusText;
+            StatusText.Text = _active.Title;
+            StatusFormat.Text = Loc.T("Karşılaştırma");
+        }
+        else if (_active?.View is SearchView search)
+        {
+            StatusText.Text = search.Folder.Length > 0 ? search.Folder : Loc.T("Hazır");
+            StatusFormat.Text = Loc.T("Arama");
+        }
         if (document is not null)
         {
             StatusCaret.Text = document.StatusText;

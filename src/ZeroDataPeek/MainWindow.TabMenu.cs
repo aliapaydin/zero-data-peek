@@ -39,6 +39,10 @@ public sealed partial class MainWindow
         Item(Loc.T("Farklı kaydet…"), "", () => _ = SaveFromMenuAsync(tab, saveAs: true), editable || tab.Data is not null, "Ctrl+Shift+S");
         Item(Loc.T("Çoğalt"), "", () => _ = DuplicateTabAsync(tab), tab.Editor is not null);
         menu.Items.Add(new MenuFlyoutSeparator());
+        if (_side == tab) Item(Loc.T("Bölünmüş görünümü kapat"), "\uE8A0", CloseSplit);
+        else Item(Loc.T("Sağ bölmede aç"), "\uE8A0", () => OpenInSidePane(tab), _tabs.Count > 1);
+        Item(Loc.T("Karşılaştır…"), "\uE8AB", () => _ = CompareAsync(tab), tab.Editor is not null);
+        menu.Items.Add(new MenuFlyoutSeparator());
         Item(Loc.T("Dosya yolunu kopyala"), "", () => CopyText(tab.FilePath!, Loc.T("Yol kopyalandı")), hasPath);
         Item(Loc.T("Dosya Gezgini'nde göster"), "", () => RevealPath(tab.FilePath!), hasPath);
         Item(Loc.T("Gezgin panelinde göster"), "", () => RevealInExplorer(tab.FilePath!, force: true), hasPath);

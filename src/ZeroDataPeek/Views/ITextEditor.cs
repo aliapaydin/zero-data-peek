@@ -59,7 +59,7 @@ public interface ITextEditor
     void TogglePreview();
 
     /// <summary>İmleci verilen satıra götürür ve satırı görünür yapar.</summary>
-    void Reveal(int line);
+    void Reveal(int line, int column = 1, int length = 0);
 
     CaretInfo GetCaret();
 }
